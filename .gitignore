@@ -1,0 +1,39 @@
+# Unity generated
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Bb]uild/
+/[Bb]uilds/
+/[Ll]ogs/
+/[Uu]ser[Ss]ettings/
+/[Mm]emoryCaptures/
+/[Rr]ecordings/
+
+# Dev-tool output: regenerate with the ScreenshotTour PlayMode test
+/Screenshots/
+
+# IDE / OS
+.vs/
+.idea/
+.vscode/
+*.csproj
+*.unityproj
+*.sln
+*.user
+*.booproj
+*.svd
+*.pidb
+*.suo
+.DS_Store
+
+# Build artifacts
+*.apk
+*.aab
+*.ipa
+*.unitypackage
+crashlytics-build.properties
+sysinfo.txt
+
+# Temp scene the PlayMode test runner leaves behind
+/Assets/InitTestScene*.unity
+/Assets/InitTestScene*.unity.meta
