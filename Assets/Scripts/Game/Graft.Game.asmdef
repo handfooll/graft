@@ -1,0 +1,20 @@
+{
+    "name": "Graft.Game",
+    "rootNamespace": "Graft.Game",
+    "references": [
+        "Graft.Core",
+        "Unity.Cinemachine",
+        "Unity.AI.Navigation",
+        "Unity.InputSystem",
+        "Unity.RenderPipelines.Universal.Runtime"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

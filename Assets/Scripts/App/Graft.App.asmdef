@@ -1,0 +1,18 @@
+{
+    "name": "Graft.App",
+    "rootNamespace": "Graft.App",
+    "references": [
+        "Graft.Core",
+        "Graft.Game",
+        "Graft.UI"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
