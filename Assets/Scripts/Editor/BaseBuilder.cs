@@ -22,7 +22,7 @@ namespace Graft.Editor
         /// <summary>Named so the screenshot tour can drive into it - it is the only wall in Base.</summary>
         public const string MonolithName = "Base_Monolith";
 
-        public static GameObject Build(Transform parent, WorldLayout layout)
+        public static GameObject Build(Transform parent, WorldLayout layout, Vector3 centre)
         {
             var palette = layout.PaletteFor(Area.Base);
             var body = MaterialLibrary.GetOrCreate("M_Prop_Base", palette.prop);
@@ -32,6 +32,10 @@ namespace Graft.Editor
 
             var root = new GameObject("Base");
             root.transform.SetParent(parent, false);
+            // Placed from the map, not at the world origin. Every block below is positioned in
+            // Base's local space, so if Base ever moves - and it does, between the two layouts -
+            // the plaza has to move with the ground disc rather than staying behind at (0,0).
+            root.transform.localPosition = centre;
 
             // The bank. Tall enough to be the thing your eye lands on from anywhere in the plaza,
             // and the only lit object in a world that is otherwise lit only by the sun.

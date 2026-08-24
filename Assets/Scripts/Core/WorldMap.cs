@@ -12,47 +12,81 @@ namespace Graft.Core
     /// rules a test can check rather than something only a screenshot can see. The editor-side
     /// builder does nothing but turn these tiles into meshes.
     ///
-    /// The world is a corridor, not five arenas: biomes are transverse bands along one path, so
-    /// walking out crosses them in ascending order and the walk home from the far end crosses all
-    /// of them again. That is DESIGN.md §7's "distance from Base is the difficulty dial", made
-    /// geometric instead of asserted.
+    /// Two shapes, both real, chosen by <see cref="WorldShape"/> - the project keeps a layout asset
+    /// for each so they can be compared on a phone rather than argued about on paper:
+    ///
+    /// <list type="bullet">
+    /// <item><b>Corridor</b> - biomes as transverse bands along one spine. The strongest possible
+    /// difficulty gradient, because the walk home from the deepest biome crosses every other one.
+    /// Its cost is that the world is one-dimensional: any biome to any other means traversing
+    /// everything in between.</item>
+    /// <item><b>Cluster</b> - biomes as overlapping discs packed around Base, each bordering two to
+    /// four others. Travel between biomes becomes a hop. The gradient survives because the discs
+    /// sit at ascending distances from Base, but its range is narrower.</item>
+    /// </list>
+    ///
+    /// Either way DESIGN.md §7's "distance from Base is the difficulty dial" is geometry rather
+    /// than an assertion, and <c>WorldMapTests</c> measures it on whichever shape is built.
     /// </summary>
     public sealed class WorldMap
     {
         readonly WorldMapSpec _spec;
         readonly sbyte[] _tiles;
         readonly float[] _biomeEnds;
+        HashSet<long> _adjacency;
 
         public WorldMap(WorldMapSpec spec)
         {
             _spec = spec ?? throw new ArgumentNullException(nameof(spec));
-            Path = new WorldPath(spec.PathPoints);
 
-            if (spec.BiomeEndFractions.Length != Areas.Biomes.Length)
-            {
-                throw new ArgumentException(
-                    $"Expected {Areas.Biomes.Length} biome borders, got {spec.BiomeEndFractions.Length}.");
-            }
-
-            _biomeEnds = new float[Areas.Biomes.Length];
-            for (var i = 0; i < _biomeEnds.Length; i++)
-            {
-                _biomeEnds[i] = spec.BiomeEndFractions[i] * Path.Length;
-            }
-
-            var reach = MaxHalfWidth + spec.EdgeWaveAmplitude;
             var min = new Vec2(float.MaxValue, float.MaxValue);
             var max = new Vec2(float.MinValue, float.MinValue);
-            foreach (var point in spec.PathPoints)
+            void Include(Vec2 centre, float reach)
             {
-                min = new Vec2(MathF.Min(min.X, point.X - reach), MathF.Min(min.Y, point.Y - reach));
-                max = new Vec2(MathF.Max(max.X, point.X + reach), MathF.Max(max.Y, point.Y + reach));
+                min = new Vec2(MathF.Min(min.X, centre.X - reach), MathF.Min(min.Y, centre.Y - reach));
+                max = new Vec2(MathF.Max(max.X, centre.X + reach), MathF.Max(max.Y, centre.Y + reach));
             }
 
-            foreach (var lobe in spec.Lobes)
+            if (Shape == WorldShape.Corridor)
             {
-                min = new Vec2(MathF.Min(min.X, lobe.Centre.X - lobe.Radius), MathF.Min(min.Y, lobe.Centre.Y - lobe.Radius));
-                max = new Vec2(MathF.Max(max.X, lobe.Centre.X + lobe.Radius), MathF.Max(max.Y, lobe.Centre.Y + lobe.Radius));
+                Path = new WorldPath(spec.PathPoints);
+
+                if (spec.BiomeEndFractions.Length != Areas.Biomes.Length)
+                {
+                    throw new ArgumentException(
+                        $"Expected {Areas.Biomes.Length} biome borders, got {spec.BiomeEndFractions.Length}.");
+                }
+
+                _biomeEnds = new float[Areas.Biomes.Length];
+                for (var i = 0; i < _biomeEnds.Length; i++)
+                {
+                    _biomeEnds[i] = spec.BiomeEndFractions[i] * Path.Length;
+                }
+
+                var reach = MaxHalfWidth + spec.EdgeWaveAmplitude;
+                foreach (var point in spec.PathPoints)
+                {
+                    Include(point, reach);
+                }
+
+                foreach (var lobe in spec.Lobes)
+                {
+                    Include(lobe.Centre, lobe.Radius);
+                }
+            }
+            else
+            {
+                if (spec.AreaDiscs.Length != Areas.All.Length)
+                {
+                    throw new ArgumentException(
+                        $"A cluster needs one disc per area: expected {Areas.All.Length}, got {spec.AreaDiscs.Length}.");
+                }
+
+                _biomeEnds = Array.Empty<float>();
+                foreach (var disc in spec.AreaDiscs)
+                {
+                    Include(disc.Centre, disc.Radius * (1f + spec.DiscWobble));
+                }
             }
 
             // The skirt is generated, not merely allowed for: the camera looks outward past the
@@ -78,7 +112,18 @@ namespace Graft.Core
         /// <summary>Unity's C# has MathF.Tau only on newer runtimes; one turn in radians, spelled out.</summary>
         const float Tau = 6.28318530718f;
 
+        public WorldShape Shape => _spec.Shape;
+
+        /// <summary>The spine. Corridor only - <c>null</c> for a cluster, which has no spine.</summary>
         public WorldPath Path { get; }
+
+        /// <summary>
+        /// Where Base is. Everything the difficulty gradient means is measured from this point, so
+        /// it is read from the layout rather than assumed to be the world origin.
+        /// </summary>
+        public Vec2 BaseCentre => Shape == WorldShape.Corridor
+            ? Path.Start
+            : _spec.AreaDiscs[Areas.DistanceRank(Area.Base)].Centre;
 
         public int Columns { get; }
         public int Rows { get; }
@@ -109,24 +154,72 @@ namespace Graft.Core
             return TileArea(column, row);
         }
 
-        /// <summary>Metres from Base along the spine - the number difficulty is a function of.</summary>
-        public float DistanceFromBase(Vec2 point) => Path.Project(point).Along;
-
-        public float BiomeStart(Area area) =>
-            area == Area.Base ? 0f : _biomeEnds[Areas.DistanceRank(area) - 1] - BandDepth(area);
-
-        public float BiomeEnd(Area area) =>
-            area == Area.Base ? _spec.BaseRadius : _biomeEnds[Areas.DistanceRank(area) - 1];
+        /// <summary>
+        /// Metres from Base - the number difficulty is a function of (DESIGN.md §7).
+        ///
+        /// Along the spine for a corridor, where the spine *is* the route home. Straight-line for a
+        /// cluster, where it genuinely is: every biome disc reaches Base directly or through one
+        /// neighbour, so there is no detour to account for.
+        /// </summary>
+        public float DistanceFromBase(Vec2 point) => Shape == WorldShape.Corridor
+            ? Path.Project(point).Along
+            : (point - BaseCentre).Magnitude;
 
         /// <summary>
-        /// A representative spot to stand in an area - the middle of its band, on the spine, so it
-        /// is walkable, roughly equidistant from both borders, and away from the boundary wall.
+        /// The way "further out" points from here - what the player is facing when they choose to
+        /// keep going. Along the spine for a corridor, away from Base for a cluster.
+        /// </summary>
+        public Vec2 OutwardHeading(Vec2 point)
+        {
+            if (Shape == WorldShape.Corridor)
+            {
+                return Path.DirectionAt(Path.Project(point).Along);
+            }
+
+            var away = point - BaseCentre;
+            return away.SqrMagnitude > 1e-4f ? away.Normalised : new Vec2(0f, 1f);
+        }
+
+        /// <summary>Where a biome's band begins, in metres along the spine. Corridor only.</summary>
+        public float BiomeStart(Area area)
+        {
+            RequireCorridor();
+            return area == Area.Base ? 0f : _biomeEnds[Areas.DistanceRank(area) - 1] - BandDepth(area);
+        }
+
+        /// <summary>Where a biome's band ends, in metres along the spine. Corridor only.</summary>
+        public float BiomeEnd(Area area)
+        {
+            RequireCorridor();
+            return area == Area.Base ? _spec.BaseRadius : _biomeEnds[Areas.DistanceRank(area) - 1];
+        }
+
+        void RequireCorridor()
+        {
+            if (Shape != WorldShape.Corridor)
+            {
+                throw new InvalidOperationException(
+                    $"Biome bands are a corridor idea; this world is a {Shape}. Use AnchorFor or DistanceFromBase.");
+            }
+        }
+
+        /// <summary>
+        /// A representative spot to stand in an area: the middle of its band for a corridor, the
+        /// centre of its disc for a cluster. Either way it is walkable, roughly equidistant from
+        /// the area's borders, and well clear of the boundary wall.
         /// The Phase 2 gate captures from these, and Phase 3 will spawn from them.
         /// </summary>
-        public Vec2 AnchorFor(Area area) =>
-            area == Area.Base
+        public Vec2 AnchorFor(Area area)
+        {
+            if (Shape == WorldShape.Cluster)
+            {
+                return _spec.AreaDiscs[Areas.DistanceRank(area)].Centre;
+            }
+
+            return area == Area.Base
                 ? Path.Start
                 : Path.PointAt((BiomeStart(area) + BiomeEnd(area)) * 0.5f);
+        }
 
         /// <summary>
         /// How many mottle patches fit across one tile. The tile is the unit the world is
@@ -206,8 +299,8 @@ namespace Graft.Core
             var seen = new bool[Columns * Rows];
             var frontier = new Stack<int>();
             var start = Index(
-                (int)MathF.Floor((Path.Start.X - Origin.X) / TileSize),
-                (int)MathF.Floor((Path.Start.Y - Origin.Y) / TileSize));
+                (int)MathF.Floor((BaseCentre.X - Origin.X) / TileSize),
+                (int)MathF.Floor((BaseCentre.Y - Origin.Y) / TileSize));
             frontier.Push(start);
             seen[start] = true;
             var count = 0;
@@ -244,6 +337,68 @@ namespace Graft.Core
             }
         }
 
+        /// <summary>
+        /// The areas this one shares a border with.
+        ///
+        /// Measured off the finished tiles rather than off the layout's discs, so it reports what
+        /// the world *is* and not what it was meant to be - a wobble that pulls two discs apart at
+        /// their only contact point is exactly the kind of thing that looks fine in the numbers.
+        ///
+        /// This is what decides whether getting from one biome to another is a hop or a traverse,
+        /// so <c>WorldMapTests</c> asserts on it, and Phase 4's way home will read it.
+        /// </summary>
+        public IEnumerable<Area> NeighboursOf(Area area)
+        {
+            foreach (var other in Areas.All)
+            {
+                if (other != area && AreasTouch(area, other))
+                {
+                    yield return other;
+                }
+            }
+        }
+
+        public bool AreasTouch(Area a, Area b) => Adjacency.Contains(Pair((int)a, (int)b));
+
+        HashSet<long> Adjacency
+        {
+            get
+            {
+                if (_adjacency != null)
+                {
+                    return _adjacency;
+                }
+
+                _adjacency = new HashSet<long>();
+                for (var row = 0; row < Rows; row++)
+                {
+                    for (var column = 0; column < Columns; column++)
+                    {
+                        var here = TileArea(column, row);
+                        if (here == Areas.None)
+                        {
+                            continue;
+                        }
+
+                        Meet(here, TileArea(column + 1, row));
+                        Meet(here, TileArea(column, row + 1));
+                    }
+                }
+
+                return _adjacency;
+
+                void Meet(int here, int there)
+                {
+                    if (there != Areas.None && there != here)
+                    {
+                        _adjacency.Add(Pair(here, there));
+                    }
+                }
+            }
+        }
+
+        static long Pair(int a, int b) => a < b ? a * 16L + b : b * 16L + a;
+
         public int CountWalkable()
         {
             var count = 0;
@@ -258,7 +413,72 @@ namespace Graft.Core
             return count;
         }
 
-        int Classify(Vec2 point)
+        int Classify(Vec2 point) => Shape == WorldShape.Corridor
+            ? ClassifyCorridor(point)
+            : ClassifyCluster(point);
+
+        /// <summary>
+        /// Which disc a point is furthest *inside*, or the void if it is inside none.
+        ///
+        /// Comparing <c>distance - radius</c> rather than plain distance is what makes overlapping
+        /// discs of different sizes share a sensible border: the point goes to whichever biome it
+        /// is deeper into, so a big disc keeps its interior instead of being sliced in half by a
+        /// small neighbour's midline. The same expression decides walkability, so the outside edge
+        /// of the world and the borders between biomes are one function and cannot disagree.
+        ///
+        /// Base is a crisp circle rather than a competitor in that comparison - it is the one place
+        /// in the world that is built rather than grown, and it should have an edge you can see.
+        /// </summary>
+        int ClassifyCluster(Vec2 point)
+        {
+            if ((point - BaseCentre).Magnitude <= _spec.BaseRadius)
+            {
+                return (int)Area.Base;
+            }
+
+            var best = Areas.None;
+            var bestDepth = float.MaxValue;
+            var shallowest = float.MaxValue;
+            var dither = Dither(point);
+
+            foreach (var area in Areas.Biomes)
+            {
+                var rank = Areas.DistanceRank(area);
+                var disc = _spec.AreaDiscs[rank];
+                var away = point - disc.Centre;
+                var depth = away.Magnitude - WobbledRadius(disc.Radius, rank, away);
+
+                // Walkability is decided on the true depth and the winner on the jittered one, so
+                // the jitter roughens the border between two biomes without fraying the edge of
+                // the world into loose tiles.
+                shallowest = MathF.Min(shallowest, depth);
+
+                var contest = depth + dither * (rank % 2 == 0 ? 1f : -1f);
+                if (contest >= bestDepth)
+                {
+                    continue;
+                }
+
+                bestDepth = contest;
+                best = (int)area;
+            }
+
+            return shallowest <= 0f ? best : Areas.None;
+        }
+
+        /// <summary>
+        /// A disc's radius in one direction, wandering with bearing so the world is not a diagram
+        /// of circles. Two harmonics, phase-shifted per disc, so no two edges repeat each other.
+        /// </summary>
+        float WobbledRadius(float radius, int rank, Vec2 away)
+        {
+            var bearing = MathF.Atan2(away.Y, away.X);
+            var wobble = MathF.Sin(bearing * 3f + rank * 1.7f) * 0.62f
+                         + MathF.Sin(bearing * 5f - rank * 2.3f) * 0.38f;
+            return radius * (1f + wobble * _spec.DiscWobble);
+        }
+
+        int ClassifyCorridor(Vec2 point)
         {
             var projection = Path.Project(point);
             var inside = projection.Offset <= HalfWidthAt(projection);
@@ -282,7 +502,7 @@ namespace Graft.Core
                 return Areas.None;
             }
 
-            if ((point - Path.Start).Magnitude <= _spec.BaseRadius)
+            if ((point - BaseCentre).Magnitude <= _spec.BaseRadius)
             {
                 return (int)Area.Base;
             }
@@ -291,8 +511,9 @@ namespace Graft.Core
             // line rather than a clean transverse cut. Waving by the lateral offset (not by the
             // distance out) keeps every point on a given border at the same distance rank.
             var lateral = projection.Offset * projection.Side;
-            var waved = projection.Along +
-                        MathF.Sin(lateral / _spec.BorderWaveLength * Tau) * _spec.BorderWaveAmplitude;
+            var waved = projection.Along
+                        + MathF.Sin(lateral / _spec.BorderWaveLength * Tau) * _spec.BorderWaveAmplitude
+                        + Dither(point);
 
             for (var i = 0; i < _biomeEnds.Length; i++)
             {
@@ -326,6 +547,23 @@ namespace Graft.Core
         }
 
         int Index(int column, int row) => row * Columns + column;
+
+        /// <summary>
+        /// Per-tile jitter in metres, symmetric about zero. Quantised to the tile so every point
+        /// within one tile gets the same answer - jittering continuously would dither the border at
+        /// sub-tile resolution and simply blur it back into a straight line.
+        /// </summary>
+        float Dither(Vec2 point)
+        {
+            if (_spec.BorderDither <= 0f)
+            {
+                return 0f;
+            }
+
+            var column = (int)MathF.Floor((point.X - Origin.X) / TileSize);
+            var row = (int)MathF.Floor((point.Y - Origin.Y) / TileSize);
+            return (Hash(column, row, _spec.Seed + 9176) - 0.5f) * 2f * _spec.BorderDither;
+        }
 
         /// <summary>Deterministic 0..1 hash. A seeded RNG would depend on iteration order; this does not.</summary>
         static float Hash(int x, int y, int seed)

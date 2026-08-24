@@ -1,4 +1,5 @@
 using System.IO;
+using Graft.Core;
 using Graft.Game;
 using UnityEditor;
 using UnityEditor.Build;
@@ -23,7 +24,17 @@ namespace Graft.Editor
         public const string CameraFramingPath = "Assets/Settings/CameraFraming.asset";
         public const string MovementTuningPath = "Assets/Settings/MovementTuning.asset";
         public const string CharacterProportionsPath = "Assets/Settings/CharacterProportions.asset";
-        public const string WorldLayoutPath = "Assets/Settings/WorldLayout.asset";
+        /// <summary>
+        /// **Which world gets built.** One line to switch, then re-run <see cref="ConfigureAll"/> -
+        /// both layouts are kept as assets precisely so the two can be compared on a device instead
+        /// of on paper. The corridor was the Phase 2 gate's first world; the cluster replaced it on
+        /// the author's call, 2026-08-24, because a one-dimensional world made every trip between
+        /// two biomes a traverse of everything between them.
+        /// </summary>
+        public const WorldShape ActiveWorldShape = WorldShape.Cluster;
+
+        public const string ClusterLayoutPath = "Assets/Settings/WorldLayout_Cluster.asset";
+        public const string CorridorLayoutPath = "Assets/Settings/WorldLayout_Corridor.asset";
 
         public static void ConfigureAll()
         {
@@ -31,6 +42,9 @@ namespace Graft.Editor
             var framing = EnsureCameraFraming();
             var movement = EnsureMovementTuning();
             var shape = EnsureCharacterProportions();
+            // Both are ensured, so the one that is not being built is still there to switch to.
+            EnsureWorldLayout(WorldShape.Corridor);
+            EnsureWorldLayout(WorldShape.Cluster);
             var layout = EnsureWorldLayout();
             RenderPipelineSetup.Configure(framing);
             BootstrapSceneBuilder.Build(framing, movement, shape, layout);
@@ -65,12 +79,34 @@ namespace Graft.Editor
             EnsureAsset<CharacterProportions>(CharacterProportionsPath);
 
         /// <summary>
-        /// Loads the world layout, creating it at its defaults if missing. The defaults *are* the
-        /// world - the shape of it, the biome borders and the palettes - so this is the one asset
-        /// whose defaults are a design decision rather than a starting point.
+        /// The layout the scene is built from. Its defaults *are* the world - the shape of it, the
+        /// borders and the palettes - so this is the one asset whose defaults are a design decision
+        /// rather than a starting point.
         /// </summary>
-        public static WorldLayout EnsureWorldLayout() =>
-            EnsureAsset<WorldLayout>(WorldLayoutPath);
+        public static WorldLayout EnsureWorldLayout() => EnsureWorldLayout(ActiveWorldShape);
+
+        /// <summary>
+        /// Loads one shape's layout, creating it at that shape's defaults if missing. Both are
+        /// created either way, so the inactive one is always there to switch to.
+        /// </summary>
+        public static WorldLayout EnsureWorldLayout(WorldShape shape)
+        {
+            var path = shape == WorldShape.Cluster ? ClusterLayoutPath : CorridorLayoutPath;
+            var existing = AssetDatabase.LoadAssetAtPath<WorldLayout>(path);
+            if (existing != null)
+            {
+                return existing;
+            }
+
+            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            var created = ScriptableObject.CreateInstance<WorldLayout>();
+            // Both layouts are the same class, so CreateInstance cannot produce two different
+            // worlds on its own - the defaults have to be stamped on after the fact.
+            created.ApplyDefaults(shape);
+            AssetDatabase.CreateAsset(created, path);
+            Debug.Log($"[GRAFT] Created {path} at its {shape} defaults.");
+            return created;
+        }
 
         static T EnsureAsset<T>(string path) where T : ScriptableObject
         {

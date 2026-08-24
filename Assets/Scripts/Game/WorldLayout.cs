@@ -20,7 +20,30 @@ namespace Graft.Game
     [CreateAssetMenu(fileName = "WorldLayout", menuName = "GRAFT/World Layout")]
     public class WorldLayout : ScriptableObject
     {
-        [Header("Spine")]
+        [Header("Shape")]
+        [Tooltip("Which generation rule builds this world. The project keeps one asset per shape " +
+                 "so they can be compared on a phone rather than argued about on paper.")]
+        public WorldShape shape = WorldShape.Cluster;
+
+        [Header("Cluster - one disc per area, Base first, then biomes going outward")]
+        [Tooltip("The discs overlap on purpose: an overlap is a shared border, and a shared border " +
+                 "is how you get from one biome to the next without going back through Base.")]
+        public AreaDisc[] areaDiscs = ClusterDiscs();
+
+        [Tooltip("How far each disc's radius wanders with bearing, as a fraction of the radius. " +
+                 "Keep it well under the smallest overlap, or two touching discs come apart and a " +
+                 "biome turns into an unreachable island.")]
+        [Range(0f, 0.3f)]
+        public float discWobble = 0.08f;
+
+        [Header("Borders")]
+        [Tooltip("Metres of per-tile jitter on which biome wins near a border, so two areas " +
+                 "interlock rather than meeting along a staircase of whole tiles. Does not affect " +
+                 "which tiles are walkable, only which area they belong to.")]
+        [Range(0f, 8f)]
+        public float borderDither = 2.6f;
+
+        [Header("Corridor - the spine")]
         [Tooltip("The path from Base outward, in metres. Biomes are bands along it, so this is " +
                  "also the difficulty gradient (DESIGN.md §7).")]
         public Vector2[] pathPoints =
@@ -33,7 +56,7 @@ namespace Graft.Game
             new Vector2(-30f, 320f),
         };
 
-        [Tooltip("Where each biome ends, as a fraction of the spine. Ascending; the last is 1.")]
+        [Tooltip("Where each biome ends, as a fraction of the spine. Ascending; the last is 1. Corridor only.")]
         public float[] biomeEndFractions = { 0.24f, 0.44f, 0.62f, 0.81f, 1f };
 
         [Header("Extent")]
@@ -101,14 +124,25 @@ namespace Graft.Game
                 points[i] = new Vec2(pathPoints[i].x, pathPoints[i].y);
             }
 
-            var discs = new WorldMapSpec.Lobe[lobes.Length];
+            var bulges = new WorldMapSpec.Lobe[lobes.Length];
+            for (var i = 0; i < bulges.Length; i++)
+            {
+                bulges[i] = new WorldMapSpec.Lobe(new Vec2(lobes[i].centre.x, lobes[i].centre.y), lobes[i].radius);
+            }
+
+            var discs = new WorldMapSpec.AreaDisc[areaDiscs.Length];
             for (var i = 0; i < discs.Length; i++)
             {
-                discs[i] = new WorldMapSpec.Lobe(new Vec2(lobes[i].centre.x, lobes[i].centre.y), lobes[i].radius);
+                discs[i] = new WorldMapSpec.AreaDisc(
+                    new Vec2(areaDiscs[i].centre.x, areaDiscs[i].centre.y), areaDiscs[i].radius);
             }
 
             return new WorldMapSpec
             {
+                Shape = shape,
+                AreaDiscs = discs,
+                DiscWobble = discWobble,
+                BorderDither = borderDither,
                 PathPoints = points,
                 TileSize = tileSize,
                 BaseRadius = baseRadius,
@@ -119,7 +153,7 @@ namespace Graft.Game
                 BorderWaveAmplitude = borderWaveAmplitude,
                 BorderWaveLength = borderWaveLength,
                 BiomeEndFractions = (float[])biomeEndFractions.Clone(),
-                Lobes = discs,
+                Lobes = bulges,
                 VoidSkirtTiles = voidSkirtTiles,
                 Seed = seed,
             };
@@ -215,9 +249,54 @@ namespace Graft.Game
             },
         };
 
+        /// <summary>
+        /// The cluster, at the depth chosen by the author on 2026-08-24: Ember Scar about 29 s from
+        /// Base at a flat run, roughly half the corridor's 58 s.
+        ///
+        /// Every distance from Base ascends - Verge 38 m, Rust 78, Mire 98, Bone 115, Ember 157 -
+        /// so DESIGN.md §7's dial survives, with a narrower range than the corridor had. The radii
+        /// are sized so each disc overlaps its neighbours by at least 13 m, which is comfortably
+        /// more than `discWobble` can eat: an overlap that closes is an unreachable island.
+        ///
+        /// Adjacency this produces - Bone Reach 4 neighbours, Verge and Glass Mire 3, Rust Flats and
+        /// Ember Scar 2 - is measured off the finished tiles by `WorldMapTests`, not trusted to
+        /// these numbers.
+        /// </summary>
+        static AreaDisc[] ClusterDiscs() => new[]
+        {
+            new AreaDisc { area = Area.Base, centre = new Vector2(0f, 0f), radius = 18f },
+            new AreaDisc { area = Area.Verge, centre = new Vector2(0f, 38f), radius = 42f },
+            new AreaDisc { area = Area.RustFlats, centre = new Vector2(-58f, 52f), radius = 44f },
+            new AreaDisc { area = Area.GlassMire, centre = new Vector2(60f, 78f), radius = 48f },
+            new AreaDisc { area = Area.BoneReach, centre = new Vector2(-14f, 114f), radius = 48f },
+            new AreaDisc { area = Area.EmberScar, centre = new Vector2(46f, 150f), radius = 46f },
+        };
+
+        /// <summary>
+        /// Stamps the defaults for one shape over this asset. Needed because both layouts are the
+        /// same class, so `CreateInstance` alone cannot produce two different worlds - and a
+        /// ScriptableObject's field defaults apply exactly once, when the file is first written.
+        /// </summary>
+        public void ApplyDefaults(WorldShape wanted)
+        {
+            shape = wanted;
+            areaDiscs = ClusterDiscs();
+            palettes = DefaultPalettes();
+        }
+
         [System.Serializable]
         public struct Lobe
         {
+            public Vector2 centre;
+            public float radius;
+        }
+
+        /// <summary>One biome's footprint in a cluster. <c>area</c> is documentation - the array is
+        /// indexed by distance rank, and <c>WorldMapTests</c> checks the two agree.</summary>
+        [System.Serializable]
+        public struct AreaDisc
+        {
+            public Area area;
             public Vector2 centre;
             public float radius;
         }

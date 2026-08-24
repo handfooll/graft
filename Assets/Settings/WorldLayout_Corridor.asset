@@ -10,8 +10,30 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 3617728a7b29b45799dfce03091676c5, type: 3}
-  m_Name: WorldLayout
+  m_Name: WorldLayout_Corridor
   m_EditorClassIdentifier: Graft.Game::Graft.Game.WorldLayout
+  shape: 0
+  areaDiscs:
+  - area: 0
+    centre: {x: 0, y: 0}
+    radius: 18
+  - area: 1
+    centre: {x: 0, y: 38}
+    radius: 42
+  - area: 2
+    centre: {x: -58, y: 52}
+    radius: 44
+  - area: 3
+    centre: {x: 60, y: 78}
+    radius: 48
+  - area: 4
+    centre: {x: -14, y: 114}
+    radius: 48
+  - area: 5
+    centre: {x: 46, y: 150}
+    radius: 46
+  discWobble: 0.08
+  borderDither: 2.6
   pathPoints:
   - {x: 0, y: 0}
   - {x: 0, y: 70}

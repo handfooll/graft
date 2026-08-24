@@ -175,6 +175,119 @@ namespace Graft.Tests
         public IEnumerator Phase2_EmberScar() => CaptureArea(Area.EmberScar, "phase2_5_ember_scar");
 
         /// <summary>
+        /// The image that shows what the cluster layout is *for*: a place where several biomes meet,
+        /// so you can see that crossing from one to another is a step rather than an expedition.
+        ///
+        /// The spot is found by searching for the busiest junction in the world rather than being
+        /// typed in, because a hand-picked coordinate stops being a junction the moment anyone
+        /// moves a disc - and it would keep taking a perfectly nice picture of one biome while
+        /// claiming to prove something about three.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator Phase2_BiomeBorder()
+        {
+            yield return LoadWorld();
+            var player = FindPlayer();
+            Drive(player, Vec2.Zero);
+
+            var regions = Object.FindAnyObjectByType<WorldRegions>();
+            Assert.IsNotNull(regions);
+
+            var junction = BusiestJunction(regions.Map, out var areasInView);
+            Assert.GreaterOrEqual(areasInView, 3,
+                $"The busiest point in the world has only {areasInView} areas within view of it. " +
+                "This layout was chosen so biomes border one another; that has not happened.");
+
+            player.Teleport(junction, regions.Map.OutwardHeading(new Vec2(junction.x, junction.z)).Heading);
+            yield return Seconds(0.4f);
+
+            Capture("phase2_7_biome_border");
+        }
+
+        /// <summary>
+        /// The walkable tile with the most distinct areas inside one screen-width of it - and well
+        /// clear of the world's edge.
+        ///
+        /// The clearance is not cosmetic. Biome discs meet at their rims, and rims are also where
+        /// the outer boundary runs, so the first search found a perfectly genuine three-biome
+        /// junction with a five-metre wall filling half the frame. A picture of a wall does not
+        /// show that crossing between biomes is a step.
+        /// </summary>
+        static Vector3 BusiestJunction(WorldMap map, out int best)
+        {
+            // Half the visible width. Anything further away than this is not in the picture, so it
+            // cannot be part of what makes the picture show a border.
+            var reach = Mathf.CeilToInt(4.75f / map.TileSize);
+            var clearance = reach + 2;
+            var found = Vector3.zero;
+            best = 0;
+
+            for (var row = 0; row < map.Rows; row++)
+            {
+                for (var column = 0; column < map.Columns; column++)
+                {
+                    if (!map.IsWalkable(column, row) || !ClearOfTheVoid(map, column, row, clearance))
+                    {
+                        continue;
+                    }
+
+                    var seen = 0;
+                    for (var dy = -reach; dy <= reach; dy++)
+                    {
+                        for (var dx = -reach; dx <= reach; dx++)
+                        {
+                            var area = map.TileArea(column + dx, row + dy);
+                            if (area != Areas.None)
+                            {
+                                seen |= 1 << area;
+                            }
+                        }
+                    }
+
+                    var count = CountBits(seen);
+                    if (count <= best)
+                    {
+                        continue;
+                    }
+
+                    best = count;
+                    var centre = map.TileCentre(column, row);
+                    found = new Vector3(centre.X, 0f, centre.Y);
+                }
+            }
+
+            return found;
+        }
+
+        static bool ClearOfTheVoid(WorldMap map, int column, int row, int tiles)
+        {
+            for (var dy = -tiles; dy <= tiles; dy++)
+            {
+                for (var dx = -tiles; dx <= tiles; dx++)
+                {
+                    if (!map.IsWalkable(column + dx, row + dy))
+                    {
+                        return false;
+                    }
+                }
+            }
+
+            return true;
+        }
+
+        static int CountBits(int value)
+        {
+            var count = 0;
+            while (value != 0)
+            {
+                count += value & 1;
+                value >>= 1;
+            }
+
+            return count;
+        }
+
+        /// <summary>
         /// The seventh image, for Phase 2's other promise: "boundaries so you cannot walk into the
         /// void". The player is driven into the edge of the world at full speed and does not cross
         /// it - which is a claim about collision that a picture of a wall cannot make on its own,
@@ -248,17 +361,12 @@ namespace Graft.Tests
         /// <summary>
         /// Facing the way the world goes. Base faces its own monument; a biome faces further out,
         /// which is the direction the player is looking when they choose to keep going.
+        ///
+        /// Asked of the map rather than worked out here, because "further out" means different
+        /// things in the two layouts - along the spine in a corridor, away from Base in a cluster.
         /// </summary>
-        static float HeadingAt(WorldRegions regions, Area area, Vector3 anchor)
-        {
-            if (area == Area.Base)
-            {
-                return 0f;
-            }
-
-            var along = regions.Map.DistanceFromBase(new Vec2(anchor.x, anchor.z));
-            return regions.Map.Path.DirectionAt(along).Heading;
-        }
+        static float HeadingAt(WorldRegions regions, Area area, Vector3 anchor) =>
+            area == Area.Base ? 0f : regions.Map.OutwardHeading(new Vec2(anchor.x, anchor.z)).Heading;
 
         /// <summary>
         /// Where the Phase 1 captures are posed, now that the world exists: the clear ground at the

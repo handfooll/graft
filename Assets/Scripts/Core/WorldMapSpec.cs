@@ -9,7 +9,12 @@ namespace Graft.Core
     /// </summary>
     public sealed class WorldMapSpec
     {
-        /// <summary>The spine, from Base outward. See <see cref="WorldPath"/>.</summary>
+        /// <summary>Which generation rule to run. Everything below is used by one shape or the other.</summary>
+        public WorldShape Shape = WorldShape.Corridor;
+
+        // ------------------------------------------------------------------ corridor
+
+        /// <summary>The spine, from Base outward. See <see cref="WorldPath"/>. Corridor only.</summary>
         public Vec2[] PathPoints = Array.Empty<Vec2>();
 
         /// <summary>
@@ -23,7 +28,7 @@ namespace Graft.Core
         /// <summary>Radius of the safe plaza at the start of the path.</summary>
         public float BaseRadius = 20f;
 
-        /// <summary>Half-width of the walkable corridor at Base, and at the far end.</summary>
+        /// <summary>Half-width of the walkable corridor at Base, and at the far end. Corridor only.</summary>
         public float HalfWidthNear = 46f;
         public float HalfWidthFar = 74f;
 
@@ -49,8 +54,45 @@ namespace Graft.Core
         /// Bulges hanging off the corridor. They belong to whichever biome their centre falls in,
         /// and they exist so the world has pockets and dead ends rather than being a tube of
         /// constant width. Each one must overlap the corridor; <c>WorldMapTests</c> proves it.
+        /// Corridor only.
         /// </summary>
         public Lobe[] Lobes = Array.Empty<Lobe>();
+
+        // ------------------------------------------------------------------ cluster
+
+        /// <summary>
+        /// One disc per area, indexed by <see cref="Areas.DistanceRank"/> - so entry 0 is Base and
+        /// entry 5 is the deepest biome. Cluster only.
+        ///
+        /// The discs overlap on purpose: where two overlap they share a border, and that border is
+        /// how you get from one biome to the next without going back through Base. Which biome
+        /// wins an overlapped point is decided by how far *inside* each disc it is, so the border
+        /// is a curve between the two centres rather than a chord.
+        /// </summary>
+        public AreaDisc[] AreaDiscs = Array.Empty<AreaDisc>();
+
+        /// <summary>
+        /// How much each disc's radius wanders with bearing, as a fraction of the radius. This is
+        /// what stops the world being a diagram of circles - it wobbles the outer boundary and the
+        /// borders between biomes at the same time, because they are the same function.
+        ///
+        /// Keep well under the smallest overlap margin. Too much and two discs that were touching
+        /// come apart at their one contact point, which turns a biome into an unreachable island;
+        /// <c>WorldMapTests</c> catches that, but it is cheaper not to cause it.
+        /// </summary>
+        public float DiscWobble = 0.08f;
+
+        // ------------------------------------------------------------------ both shapes
+
+        /// <summary>
+        /// Metres of per-tile jitter applied to **which biome wins** near a border, so the two
+        /// interlock instead of meeting along a staircase of whole tiles.
+        ///
+        /// Deliberately not applied to whether a tile is walkable at all. Jittering that as well
+        /// would fray the outer boundary into loose tiles, and a tile that comes adrift from the
+        /// world is an island - which the connectivity test would catch, but only after the fact.
+        /// </summary>
+        public float BorderDither = 2.6f;
 
         /// <summary>How many tiles of dead ground to generate outside the boundary.</summary>
         public int VoidSkirtTiles = 6;
@@ -63,6 +105,18 @@ namespace Graft.Core
             public readonly float Radius;
 
             public Lobe(Vec2 centre, float radius)
+            {
+                Centre = centre;
+                Radius = radius;
+            }
+        }
+
+        public readonly struct AreaDisc
+        {
+            public readonly Vec2 Centre;
+            public readonly float Radius;
+
+            public AreaDisc(Vec2 centre, float radius)
             {
                 Centre = centre;
                 Radius = radius;

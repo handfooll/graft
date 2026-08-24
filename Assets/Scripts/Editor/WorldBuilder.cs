@@ -52,7 +52,8 @@ namespace Graft.Editor
             BuildGround(root.transform, layout, map);
             BuildVoidSkirt(root.transform, layout, map);
             BuildBoundary(root.transform, layout, map);
-            BaseBuilder.Build(root.transform, layout);
+            var baseCentre = map.AnchorFor(Area.Base);
+            BaseBuilder.Build(root.transform, layout, new Vector3(baseCentre.X, 0f, baseCentre.Y));
             ScatterProps(root.transform, layout, map);
 
             var regions = root.AddComponent<WorldRegions>();
@@ -60,10 +61,45 @@ namespace Graft.Editor
 
             BakeNavMesh(root);
 
-            Debug.Log($"[GRAFT] World built: {map.CountWalkable()} tiles over " +
-                      $"{map.CountWalkable() * map.TileSize * map.TileSize:N0} m², " +
-                      $"spine {map.Path.Length:0} m.");
+            Debug.Log($"[GRAFT] {map.Shape} world built: {map.CountWalkable()} tiles over " +
+                      $"{map.CountWalkable() * map.TileSize * map.TileSize:N0} m². " +
+                      Reach(map) + " " + Borders(map));
             return root;
+        }
+
+        /// <summary>
+        /// How deep the world goes, in the terms its own shape is measured in. A corridor has a
+        /// spine length; a cluster does not have a spine at all, and asking one for it is a null
+        /// reference in a log line that was only ever meant to be reassuring.
+        /// </summary>
+        static string Reach(WorldMap map)
+        {
+            var deepest = map.DistanceFromBase(map.AnchorFor(Area.EmberScar));
+            return map.Shape == WorldShape.Corridor
+                ? $"Spine {map.Path.Length:0} m; Ember Scar {deepest:0} m out."
+                : $"Ember Scar {deepest:0} m from Base.";
+        }
+
+        /// <summary>
+        /// Who borders whom, measured off the finished tiles. Logged because it is the property the
+        /// cluster layout was chosen for, and because it is decided by disc overlaps interacting
+        /// with the wobble - which is to say, not by anything you can read off the numbers.
+        /// </summary>
+        static string Borders(WorldMap map)
+        {
+            var summary = new System.Text.StringBuilder("Borders:");
+            foreach (var area in Areas.Biomes)
+            {
+                var neighbours = new List<string>();
+                foreach (var other in map.NeighboursOf(area))
+                {
+                    neighbours.Add(other.ToString());
+                }
+
+                summary.Append($" {area}={neighbours.Count}({string.Join("/", neighbours)})");
+            }
+
+            return summary.ToString();
         }
 
         static void ResetMeshFolder()
