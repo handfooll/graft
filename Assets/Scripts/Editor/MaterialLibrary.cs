@@ -12,13 +12,13 @@ namespace Graft.Editor
     {
         public const string Folder = "Assets/Materials";
 
-        public static Material GetOrCreate(string name, Color colour)
+        public static Material GetOrCreate(string name, Color colour, bool emissive = false)
         {
             var path = $"{Folder}/{name}.mat";
             var existing = AssetDatabase.LoadAssetAtPath<Material>(path);
             if (existing != null)
             {
-                Apply(existing, colour);
+                Apply(existing, colour, emissive);
                 EditorUtility.SetDirty(existing);
                 return existing;
             }
@@ -32,7 +32,7 @@ namespace Graft.Editor
             }
 
             var material = new Material(shader) { name = name };
-            Apply(material, colour);
+            Apply(material, colour, emissive);
             AssetDatabase.CreateAsset(material, path);
             return material;
         }
@@ -45,7 +45,7 @@ namespace Graft.Editor
         /// bug or a terrain seam. Nothing in the primitive phases wants a highlight, and the Phase 6
         /// target is toon shading, which does not want one either.
         /// </summary>
-        static void Apply(Material material, Color colour)
+        static void Apply(Material material, Color colour, bool emissive)
         {
             material.SetColor("_BaseColor", colour);
             material.SetFloat("_Metallic", 0f);
@@ -54,6 +54,24 @@ namespace Graft.Editor
             material.EnableKeyword("_SPECULARHIGHLIGHTS_OFF");
             material.SetFloat("_EnvironmentReflections", 0f);
             material.EnableKeyword("_ENVIRONMENTREFLECTIONS_OFF");
+
+            // Emission survives shadow. That is the point of it here: one area in the world glows,
+            // and an emissive material is the only thing that stays that colour when the sun is not
+            // on it, which is what makes Ember Scar identifiable in a thumbnail (Phase 2's gate).
+            if (emissive)
+            {
+                material.EnableKeyword("_EMISSION");
+                // Only just over 1. At 2.2 the vents in Ember Scar tonemapped to white and read as
+                // stage lighting rather than as hot rock - the hue is the signal, not the intensity.
+                material.SetColor("_EmissionColor", colour * 1.25f);
+                material.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
+            }
+            else
+            {
+                material.DisableKeyword("_EMISSION");
+                material.SetColor("_EmissionColor", Color.black);
+                material.globalIlluminationFlags = MaterialGlobalIlluminationFlags.EmissiveIsBlack;
+            }
         }
     }
 }

@@ -1,9 +1,12 @@
+using Graft.Core;
 using Graft.Editor;
 using Graft.Game;
 using NUnit.Framework;
+using Unity.AI.Navigation;
 using Unity.Cinemachine;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.AI;
 using UnityEngine.SceneManagement;
 
 namespace Graft.Tests
@@ -103,6 +106,89 @@ namespace Graft.Tests
             var rig = FindInWorld<CameraRig>();
             var camera = rig.GetComponent<CinemachineCamera>();
             Assert.IsNull(camera.Target.LookAtTarget, "A LookAt target reintroduces camera rotation.");
+        }
+
+        [Test]
+        public void WorldRegionsHasItsLayout()
+        {
+            var regions = FindInWorld<WorldRegions>();
+            Assert.IsNotNull(regions, "No WorldRegions - nothing can tell which biome it is standing in.");
+            Assert.IsNotNull(regions.Layout,
+                "WorldRegions.layout is unassigned; every area lookup would silently answer Base.");
+        }
+
+        /// <summary>
+        /// The NavMesh has to be an asset, not something rebuilt on load. Left unbaked the
+        /// component is still there, still configured, still green in the inspector - and every
+        /// enemy Phase 3 adds stands perfectly still with no error.
+        /// </summary>
+        [Test]
+        public void NavMeshIsBakedAndSaved()
+        {
+            var surface = FindInWorld<NavMeshSurface>();
+            Assert.IsNotNull(surface, "No NavMeshSurface - the world has no navigation at all.");
+            Assert.IsNotNull(surface.navMeshData, "The NavMeshSurface has no baked data.");
+            Assert.AreEqual(NavMeshCollectGeometry.PhysicsColliders, surface.useGeometry,
+                "Baking from render meshes would carve holes under the flat decorations, which " +
+                "deliberately have no collider because the player walks over them.");
+        }
+
+        [Test]
+        public void EveryAreaHasGroundInTheScene()
+        {
+            foreach (var area in Areas.All)
+            {
+                Assert.IsNotNull(FindByName($"Ground_{area}"),
+                    $"No ground object for {area} - that area would render as a hole in the world.");
+            }
+        }
+
+        [Test]
+        public void TheWorldIsEnclosed()
+        {
+            var boundary = FindByName("Boundary");
+            Assert.IsNotNull(boundary, "No boundary - the player can walk off the edge of the world.");
+            Assert.Greater(boundary.transform.childCount, 0, "The boundary has no blocks in it.");
+
+            Assert.IsNotNull(FindByName("Void"),
+                "No void skirt - the camera looks past the wall and frames the clear colour, " +
+                "which reads as a rendering fault rather than as the edge of the map.");
+        }
+
+        [Test]
+        public void ThePlayerStartsInBase()
+        {
+            var player = FindInWorld<PlayerController>();
+            var regions = FindInWorld<WorldRegions>();
+            Assert.IsTrue(regions.IsInBase(player.transform.position),
+                $"The player spawns at {player.transform.position} which is not Base (§3).");
+        }
+
+        /// <summary>
+        /// STATUS.md, standing instruction: the two Phase 1 walls were scaffolding for one gate
+        /// image and Phase 2 deletes them. This is here so nothing quietly puts them back.
+        /// </summary>
+        [Test]
+        public void Phase1ScaffoldingIsGone()
+        {
+            Assert.IsNull(FindByName("Wall_East"));
+            Assert.IsNull(FindByName("Wall_North"));
+        }
+
+        GameObject FindByName(string name)
+        {
+            foreach (var root in _scene.GetRootGameObjects())
+            {
+                foreach (var transform in root.GetComponentsInChildren<Transform>(true))
+                {
+                    if (transform.name == name)
+                    {
+                        return transform.gameObject;
+                    }
+                }
+            }
+
+            return null;
         }
     }
 }

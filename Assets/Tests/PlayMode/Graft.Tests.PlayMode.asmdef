@@ -7,7 +7,8 @@
         "Graft.Core",
         "Graft.Game",
         "Graft.UI",
-        "Graft.App"
+        "Graft.App",
+        "Unity.AI.Navigation"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

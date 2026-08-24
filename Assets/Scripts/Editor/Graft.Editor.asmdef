@@ -8,6 +8,7 @@
         "Graft.App",
         "Unity.RenderPipelines.Universal.Runtime",
         "Unity.Cinemachine",
+        "Unity.AI.Navigation",
         "Unity.InputSystem"
     ],
     "includePlatforms": [

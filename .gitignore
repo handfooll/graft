@@ -34,6 +34,12 @@
 crashlytics-build.properties
 sysinfo.txt
 
+# Test-run output: regenerate with the commands in docs/STATUS.md
+/*.log
+/results.xml
+/tour.xml
+/sweep.xml
+
 # Temp scene the PlayMode test runner leaves behind
 /Assets/InitTestScene*.unity
 /Assets/InitTestScene*.unity.meta

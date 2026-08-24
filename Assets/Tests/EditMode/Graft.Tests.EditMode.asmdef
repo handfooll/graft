@@ -9,7 +9,8 @@
         "Graft.UI",
         "Graft.App",
         "Graft.Editor",
-        "Unity.Cinemachine"
+        "Unity.Cinemachine",
+        "Unity.AI.Navigation"
     ],
     "includePlatforms": [
         "Editor"

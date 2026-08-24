@@ -11,45 +11,33 @@ namespace Graft.Editor
     /// Builds <c>Assets/Scenes/World.unity</c> from scratch.
     ///
     /// There is exactly one gameplay scene (D3, and REFERENCE_XPHERO.md - the shipped game does
-    /// not use a scene per world). Biomes become content loaded into this scene, never siblings
-    /// of it. The scene is a real saved asset rather than something assembled at runtime, because
-    /// Phase 2 has to bake a NavMesh across it and baking needs authored geometry.
+    /// not use a scene per world). Biomes are content inside this scene, never siblings of it. The
+    /// scene is a real saved asset rather than something assembled at runtime, because the NavMesh
+    /// is baked across it and baking needs authored geometry.
     ///
-    /// Phase 1 contents: ground, the player capsule and its camera rig, and two wall blocks -
-    /// the walls exist only so the gate's "near a wall" capture has something to be near. Phase 2
-    /// builds the real world; nothing here is meant to survive it.
+    /// This file now owns only the things that are not the world: the player, the camera, the HUD
+    /// and the lighting. <see cref="WorldBuilder"/> owns the ground, the boundary, Base and the
+    /// props, and it is driven entirely by the <c>WorldLayout</c> asset.
+    ///
+    /// Phase 1's two scaffolding walls are gone, as STATUS.md said they would be. Nothing was
+    /// built on them.
     /// </summary>
     public static class BootstrapSceneBuilder
     {
         public const string ScenePath = "Assets/Scenes/World.unity";
 
-        /// <summary>
-        /// Ground is far wider than the camera can see. Sized off the framing rather than picked,
-        /// because at 40x40 the original slab ran out of the top of frame as soon as the camera
-        /// pulled back, leaving a black band that looks like a rendering fault.
-        /// </summary>
-        const float GroundMargin = 2.5f;
-
-        /// <summary>
-        /// Where the gate's "near a wall" capture drives into. Far enough from the origin that the
-        /// walls are outside the frame when the player is stood at the origin - the at-rest and
-        /// mid-move captures are about the character, and a wall filling a third of those images
-        /// buries the thing they are asking you to look at.
-        /// </summary>
-        public static readonly Vector3 WallCorner = new Vector3(24f, 0f, 4f);
-
         [MenuItem("GRAFT/Rebuild World Scene")]
         static void BuildFromMenu() =>
             Build(ProjectSetup.EnsureCameraFraming(), ProjectSetup.EnsureMovementTuning(),
-                ProjectSetup.EnsureCharacterProportions());
+                ProjectSetup.EnsureCharacterProportions(), ProjectSetup.EnsureWorldLayout());
 
-        public static void Build(CameraFraming framing, MovementTuning tuning, CharacterProportions shape)
+        public static void Build(CameraFraming framing, MovementTuning tuning, CharacterProportions shape,
+            WorldLayout layout)
         {
             var scene = EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
 
-            BuildGround(framing);
-            BuildWalls();
-            var player = BuildPlayer(tuning, shape);
+            var world = WorldBuilder.Build(layout);
+            var player = BuildPlayer(tuning, shape, world.GetComponent<WorldRegions>());
             HudBuilder.Build(player.GetComponent<VirtualStickInput>());
             ConfigureLight();
             ConfigureCamera(framing, player.transform);
@@ -69,60 +57,18 @@ namespace Graft.Editor
             Debug.Log($"[GRAFT] World scene rebuilt at {ScenePath}.");
         }
 
-        static void BuildGround(CameraFraming framing)
-        {
-            var extent = framing.FarGroundDistance * GroundMargin;
-            var ground = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            ground.name = "Ground";
-            ground.transform.position = new Vector3(0f, -0.5f, 0f);
-            ground.transform.localScale = new Vector3(extent, 1f, extent);
-            ground.isStatic = true;
-
-            // The ground receives shadows but never casts one. A flat slab has nothing to cast
-            // onto, and including it as a caster only adds depth-bias artefacts - a faint diagonal
-            // band across otherwise uniform ground, which later reads as a fake biome edge.
-            ground.GetComponent<MeshRenderer>().shadowCastingMode =
-                UnityEngine.Rendering.ShadowCastingMode.Off;
-
-            SetMaterial(ground, MaterialLibrary.GetOrCreate("M_Ground", new Color(0.21f, 0.25f, 0.22f)));
-        }
-
-        /// <summary>
-        /// Two blocks meeting at <see cref="WallCorner"/>. A corner rather than a single slab so
-        /// the capture shows the CharacterController sliding along one face and stopping dead
-        /// against the other - the two behaviours worth seeing before committing to the movement.
-        /// </summary>
-        static void BuildWalls()
-        {
-            var parent = new GameObject("Walls");
-            var material = MaterialLibrary.GetOrCreate("M_Wall", new Color(0.33f, 0.32f, 0.36f));
-
-            AddWall(parent, "Wall_East", new Vector3(WallCorner.x + 0.4f, 1.1f, WallCorner.z - 5f),
-                new Vector3(0.8f, 2.2f, 11f), material);
-            AddWall(parent, "Wall_North", new Vector3(WallCorner.x - 4.6f, 1.1f, WallCorner.z + 0.4f),
-                new Vector3(10f, 2.2f, 0.8f), material);
-        }
-
-        static void AddWall(GameObject parent, string name, Vector3 position, Vector3 scale, Material material)
-        {
-            var wall = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            wall.name = name;
-            wall.transform.SetParent(parent.transform);
-            wall.transform.position = position;
-            wall.transform.localScale = scale;
-            wall.isStatic = true;
-            SetMaterial(wall, material);
-        }
-
         /// <summary>
         /// The player. The silhouette comes from <see cref="CharacterProportions"/> and the parts
         /// are built by <see cref="CharacterRig"/>, so the shape can be changed without touching
         /// this file - and so the proportion sweep can rebuild it at runtime.
         /// </summary>
-        static GameObject BuildPlayer(MovementTuning tuning, CharacterProportions shape)
+        static GameObject BuildPlayer(MovementTuning tuning, CharacterProportions shape, WorldRegions regions)
         {
             var player = new GameObject("Player");
-            player.transform.position = Vector3.zero;
+            // Standing in Base, which is where an expedition starts and where death returns you
+            // (§3). Read from the world rather than assumed to be the origin, so re-routing the
+            // spine cannot leave the player spawning in the void.
+            player.transform.position = regions.AnchorFor(Graft.Core.Area.Base);
 
             var controller = player.AddComponent<CharacterController>();
             controller.slopeLimit = 50f;
@@ -187,9 +133,5 @@ namespace Graft.Editor
             rig.Apply();
         }
 
-        static void SetMaterial(GameObject target, Material material)
-        {
-            target.GetComponent<MeshRenderer>().sharedMaterial = material;
-        }
     }
 }

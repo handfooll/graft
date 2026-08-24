@@ -23,6 +23,7 @@ namespace Graft.Editor
         public const string CameraFramingPath = "Assets/Settings/CameraFraming.asset";
         public const string MovementTuningPath = "Assets/Settings/MovementTuning.asset";
         public const string CharacterProportionsPath = "Assets/Settings/CharacterProportions.asset";
+        public const string WorldLayoutPath = "Assets/Settings/WorldLayout.asset";
 
         public static void ConfigureAll()
         {
@@ -30,8 +31,9 @@ namespace Graft.Editor
             var framing = EnsureCameraFraming();
             var movement = EnsureMovementTuning();
             var shape = EnsureCharacterProportions();
+            var layout = EnsureWorldLayout();
             RenderPipelineSetup.Configure(framing);
-            BootstrapSceneBuilder.Build(framing, movement, shape);
+            BootstrapSceneBuilder.Build(framing, movement, shape, layout);
             SwitchToiOS();
             AssetDatabase.SaveAssets();
             Debug.Log($"[GRAFT] ProjectSetup.ConfigureAll complete. Active build target: {EditorUserBuildSettings.activeBuildTarget}, colour space: {PlayerSettings.colorSpace}.");
@@ -61,6 +63,14 @@ namespace Graft.Editor
         /// </summary>
         public static CharacterProportions EnsureCharacterProportions() =>
             EnsureAsset<CharacterProportions>(CharacterProportionsPath);
+
+        /// <summary>
+        /// Loads the world layout, creating it at its defaults if missing. The defaults *are* the
+        /// world - the shape of it, the biome borders and the palettes - so this is the one asset
+        /// whose defaults are a design decision rather than a starting point.
+        /// </summary>
+        public static WorldLayout EnsureWorldLayout() =>
+            EnsureAsset<WorldLayout>(WorldLayoutPath);
 
         static T EnsureAsset<T>(string path) where T : ScriptableObject
         {

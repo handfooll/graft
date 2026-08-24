@@ -45,11 +45,43 @@ Add to this file whenever something costs more than about twenty minutes to diag
   is the only scale-free measure, and it survives not knowing the reference's world units. It also
   separates two things that are easy to confuse: how far the camera is, and how the character is
   *proportioned*. A squat chibi and a 2:1 capsule at the identical camera do not read alike.
+- **A two-tone tile scatter reads as a checkerboard, not as texture,** if the tile is anywhere
+  near the size of the visible frame. At 4 m tiles under a camera that sees 9.5 m, even a 10%
+  value difference reads as painted squares. The unit the world is *designed* in and the unit the
+  ground is *drawn* in have to be different numbers - halving the draw size is enough to turn the
+  grid into clusters.
+- **A tall boundary wall must not cast shadows.** At 5.5 m under a 38-degree sun it throws seven
+  metres of shadow back across the ground *inside* the world, so the entire rim of the map renders
+  as a black trench and the biome it is supposed to edge cannot be seen at all.
+- **Emissive materials tonemap to white long before you expect.** An emission colour at 2.2x came
+  out as stage lighting; the hue is the signal, not the intensity, and about 1.25x keeps it.
 - **Framing tuned against marker cubes answers the wrong question.** "How much warning do I get"
   and "is the character readable" are different questions with different answers, and a third -
   "is a *change* to the character readable" - decides more than either, because DESIGN.md's hook is
   a visual on the player's body. Put the real character, approach markers and stand-in props in
   every framing sweep image (`CameraFramingSweep` does).
+
+## NavMesh
+
+- **`NavMeshCollectGeometry` is in `UnityEngine.AI`, not `Unity.AI.Navigation`** - even though
+  `NavMeshSurface` and `CollectObjects`, which you use in the same three lines, are in the package
+  namespace. The error names the type and not the namespace, so it reads like a missing package
+  reference.
+- **`NavMeshSurface.BuildNavMesh()` from a script bakes into memory and nothing else.** The scene
+  saves clean, the component looks configured, and the data is gone on the next load - and in a
+  player build it never existed. Persist it explicitly:
+  `AssetDatabase.CreateAsset(surface.navMeshData, path)` after the bake.
+- **Bake from `PhysicsColliders`, not the default `RenderMeshes`,** if any decoration deliberately
+  has no collider. Flat plates, pools and paving are things the player walks straight over; baked
+  from render meshes each one punches a hole in the NavMesh that nothing reports.
+
+## ScriptableObjects
+
+- **Defaults in the class only ever apply once.** A `[CreateAssetMenu]` default field value is used
+  the moment the `.asset` is created and never again - after that the serialised file wins, and
+  editing the defaults in code changes nothing at all with no error. If an asset's defaults *are*
+  the design (`WorldLayout` is), the asset has to be deleted to pick a change up. It looks exactly
+  like an edit that did not compile.
 
 ## iOS runtime
 
