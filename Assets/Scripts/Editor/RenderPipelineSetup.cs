@@ -1,3 +1,4 @@
+using Graft.Game;
 using UnityEditor;
 using UnityEngine;
 
@@ -15,21 +16,31 @@ namespace Graft.Editor
         public const string MobileAssetPath = "Assets/Settings/Mobile_RPAsset.asset";
         public const string PCAssetPath = "Assets/Settings/PC_RPAsset.asset";
 
-        /// <summary>Metres of shadow. The top-down camera never sees further than this.</summary>
-        public const float ShadowDistance = 25f;
+        /// <summary>
+        /// A little past the far edge of frame, so the boundary itself is never on screen.
+        /// </summary>
+        const float ShadowMargin = 1.15f;
 
-        public static void Configure()
+        [MenuItem("GRAFT/Configure Render Pipeline")]
+        static void ConfigureFromMenu() => Configure(ProjectSetup.EnsureCameraFraming());
+
+        public static void Configure(CameraFraming framing)
         {
+            // Derived from the camera, never a constant. A flat 25 m silently deleted every shadow
+            // in the frame the moment the camera pulled back past it - no error, just no shadows.
+            var shadowDistance = framing.FarGroundDistance * ShadowMargin;
             // One cascade, not the template's four. Cascades exist to spread resolution over a
             // long view; a fixed-height top-down camera has no long view, and every split leaves a
             // visible diagonal seam across otherwise flat ground. 2048 texels over 25 m is plenty.
-            Tune(MobileAssetPath, shadowmapResolution: 2048, cascades: 1, softShadowQuality: 2);
-            Tune(PCAssetPath, shadowmapResolution: 2048, cascades: 1, softShadowQuality: 3);
+            Tune(MobileAssetPath, shadowDistance, shadowmapResolution: 2048, cascades: 1, softShadowQuality: 2);
+            Tune(PCAssetPath, shadowDistance, shadowmapResolution: 2048, cascades: 1, softShadowQuality: 3);
 
             AssetDatabase.SaveAssets();
+            Debug.Log($"[GRAFT] Shadow distance set to {shadowDistance:0.0} m " +
+                      $"(frame reaches {framing.FarGroundDistance:0.0} m).");
         }
 
-        static void Tune(string path, int shadowmapResolution, int cascades, int softShadowQuality)
+        static void Tune(string path, float shadowDistance, int shadowmapResolution, int cascades, int softShadowQuality)
         {
             var asset = AssetDatabase.LoadAssetAtPath<ScriptableObject>(path);
             if (asset == null)
@@ -39,7 +50,7 @@ namespace Graft.Editor
             }
 
             var serialized = new SerializedObject(asset);
-            Set(serialized, "m_ShadowDistance", p => p.floatValue = ShadowDistance);
+            Set(serialized, "m_ShadowDistance", p => p.floatValue = shadowDistance);
             Set(serialized, "m_MainLightShadowsSupported", p => p.boolValue = true);
             Set(serialized, "m_MainLightShadowmapResolution", p => p.intValue = shadowmapResolution);
             Set(serialized, "m_ShadowCascadeCount", p => p.intValue = cascades);

@@ -1,4 +1,5 @@
 using System.IO;
+using Graft.Game;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -20,22 +21,24 @@ namespace Graft.Editor
     {
         public const string ScenePath = "Assets/Scenes/World.unity";
 
-        // Camera framing. Fixed pitch, player centred (D2). Phase 1 hands these to Cinemachine.
-        public const float CameraPitch = 55f;
-        public const float CameraHeight = 16f;
-        public const float CameraFieldOfView = 45f;
-
-        const float GroundExtent = 40f;
+        /// <summary>
+        /// Ground is far wider than the camera can see. Sized off the framing rather than picked,
+        /// because at 40x40 the original slab ran out of the top of frame as soon as the camera
+        /// pulled back, leaving a black band that looks like a rendering fault.
+        /// </summary>
+        const float GroundMargin = 2.5f;
 
         [MenuItem("GRAFT/Rebuild World Scene")]
-        public static void Build()
+        static void BuildFromMenu() => Build(ProjectSetup.EnsureCameraFraming());
+
+        public static void Build(CameraFraming framing)
         {
             var scene = EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
 
-            var ground = BuildGround();
+            var ground = BuildGround(framing);
             BuildLandmarkBox();
             ConfigureLight();
-            ConfigureCamera();
+            ConfigureCamera(framing);
 
             // Kept deliberately dim. Bright ambient flattens everything into one value, which on a
             // top-down camera means you cannot tell a box from a painted square.
@@ -52,12 +55,13 @@ namespace Graft.Editor
             Debug.Log($"[GRAFT] World scene rebuilt at {ScenePath} (ground {ground.name}).");
         }
 
-        static GameObject BuildGround()
+        static GameObject BuildGround(CameraFraming framing)
         {
+            var extent = framing.FarGroundDistance * GroundMargin;
             var ground = GameObject.CreatePrimitive(PrimitiveType.Cube);
             ground.name = "Ground";
             ground.transform.position = new Vector3(0f, -0.5f, 0f);
-            ground.transform.localScale = new Vector3(GroundExtent, 1f, GroundExtent);
+            ground.transform.localScale = new Vector3(extent, 1f, extent);
             ground.isStatic = true;
 
             // The ground receives shadows but never casts one. A flat slab has nothing to cast
@@ -101,28 +105,21 @@ namespace Graft.Editor
             light.shadowNormalBias = 0.2f;
         }
 
-        static void ConfigureCamera()
+        static void ConfigureCamera(CameraFraming framing)
         {
             var camera = Camera.main;
             camera.name = "Main Camera";
             camera.orthographic = false;
-            camera.fieldOfView = CameraFieldOfView;
+            camera.fieldOfView = framing.fieldOfView;
             camera.nearClipPlane = 0.3f;
-            camera.farClipPlane = 200f;
+            camera.farClipPlane = framing.FarGroundDistance * 2f;
             camera.clearFlags = CameraClearFlags.SolidColor;
             camera.backgroundColor = new Color(0.09f, 0.10f, 0.12f);
-            PointAtOrigin(camera.transform);
-        }
 
-        /// <summary>
-        /// Places a transform at <see cref="CameraHeight"/> looking down at the world origin with a
-        /// fixed <see cref="CameraPitch"/>. Shared so the Phase 1 Cinemachine rig frames identically.
-        /// </summary>
-        public static void PointAtOrigin(Transform transform)
-        {
-            var back = CameraHeight / Mathf.Tan(CameraPitch * Mathf.Deg2Rad);
-            transform.position = new Vector3(0f, CameraHeight, -back);
-            transform.rotation = Quaternion.Euler(CameraPitch, 0f, 0f);
+            // Phase 1 replaces this with a Cinemachine rig reading the same asset, so the framing
+            // established here is the framing that survives.
+            camera.transform.position = framing.OffsetFromTarget;
+            camera.transform.rotation = framing.Rotation;
         }
 
         static void SetMaterial(GameObject target, Material material)

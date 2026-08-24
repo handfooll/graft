@@ -1,3 +1,5 @@
+using System.IO;
+using Graft.Game;
 using UnityEditor;
 using UnityEditor.Build;
 using UnityEngine;
@@ -18,12 +20,14 @@ namespace Graft.Editor
     public static class ProjectSetup
     {
         public const string BundleIdentifier = "com.handfooll.graft";
+        public const string CameraFramingPath = "Assets/Settings/CameraFraming.asset";
 
         public static void ConfigureAll()
         {
             ConfigurePlayer();
-            RenderPipelineSetup.Configure();
-            BootstrapSceneBuilder.Build();
+            var framing = EnsureCameraFraming();
+            RenderPipelineSetup.Configure(framing);
+            BootstrapSceneBuilder.Build(framing);
             SwitchToiOS();
             AssetDatabase.SaveAssets();
             Debug.Log($"[GRAFT] ProjectSetup.ConfigureAll complete. Active build target: {EditorUserBuildSettings.activeBuildTarget}, colour space: {PlayerSettings.colorSpace}.");
@@ -31,6 +35,25 @@ namespace Graft.Editor
 
         [MenuItem("GRAFT/Configure Project")]
         static void ConfigureAllFromMenu() => ConfigureAll();
+
+        /// <summary>
+        /// Loads the camera framing asset, creating it at its defaults if it is missing, so a fresh
+        /// clone configures itself without anyone opening the editor.
+        /// </summary>
+        public static CameraFraming EnsureCameraFraming()
+        {
+            var existing = AssetDatabase.LoadAssetAtPath<CameraFraming>(CameraFramingPath);
+            if (existing != null)
+            {
+                return existing;
+            }
+
+            Directory.CreateDirectory(Path.GetDirectoryName(CameraFramingPath));
+            var framing = ScriptableObject.CreateInstance<CameraFraming>();
+            AssetDatabase.CreateAsset(framing, CameraFramingPath);
+            Debug.Log($"[GRAFT] Created {CameraFramingPath} at defaults.");
+            return framing;
+        }
 
         static void ConfigurePlayer()
         {
@@ -46,7 +69,9 @@ namespace Graft.Editor
             PlayerSettings.allowedAutorotateToLandscapeLeft = false;
             PlayerSettings.allowedAutorotateToLandscapeRight = false;
 
-            PlayerSettings.iOS.targetOSVersionString = "13.0";
+            // 15.0, not lower: this editor version clamps anything below it back up on every
+            // run, so asking for 13.0 just makes ProjectSettings.asset dirty every time.
+            PlayerSettings.iOS.targetOSVersionString = "15.0";
             PlayerSettings.iOS.appleEnableAutomaticSigning = true;
             PlayerSettings.SetScriptingBackend(NamedBuildTarget.iOS, ScriptingImplementation.IL2CPP);
             PlayerSettings.SetIl2CppCompilerConfiguration(NamedBuildTarget.iOS, Il2CppCompilerConfiguration.Release);
