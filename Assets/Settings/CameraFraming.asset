@@ -12,6 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6198d6bb752064d309ab728d1a518849, type: 3}
   m_Name: CameraFraming
   m_EditorClassIdentifier: Graft.Game::Graft.Game.CameraFraming
-  pitchDegrees: 55
-  distance: 26
-  fieldOfView: 45
+  pitchDegrees: 47.5
+  distance: 33.7
+  positionDamping: 0.12
+  fieldOfView: 34

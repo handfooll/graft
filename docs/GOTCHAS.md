@@ -15,10 +15,50 @@ Add to this file whenever something costs more than about twenty minutes to diag
   framing maths from the capture's own dimensions instead. Portrait is where this bites: at 9:16
   the horizontal field is far narrower than the vertical FOV suggests.
 - **A `ScreenSpaceOverlay` canvas does not render into a camera's target texture.** Any capture
-  that needs to show UI has to switch the canvas to `ScreenSpaceCamera` first. Relevant from
-  Phase 4, when the cargo bar has to appear in the gate images.
+  that needs to show UI has to switch the canvas to `ScreenSpaceCamera` first - and switch it
+  *after* assigning the target texture, because the canvas sizes itself to the camera's viewport
+  and the viewport is only the texture once the texture is assigned. `Screenshot.Capture` borrows
+  and returns overlay canvases around each render, so Overlay stays the path the phone runs.
 - **The editor renders at the "PC" quality level, iOS renders at "Mobile".** Captures force
   Mobile, or the gate images are judged on a render path the phone never uses.
+
+## Cameras and framing
+
+- **The phone is not 9:16.** An iPhone 14 Pro is 1179x2556 - aspect **0.461**, not 0.5625. A
+  720x1280 capture is 22% wider in aspect than the device, so every framing judgement made from one
+  is made about a screen that does not exist, and always errs toward "there is more room than there
+  is". Captures are 720x1560, and `CameraFraming.DeviceAspect` is the single place that number
+  lives.
+- **Unity's field of view is vertical.** In portrait a wide one is enormously tall: at 45° and 26 m
+  the camera bought only 12 m of screen *width* and leant everything near the top and bottom of
+  frame outward. Reason about the short axis; the number Unity shows you is the long one.
+- **Measure a reference screenshot, do not eyeball it.** Camera pitch falls straight out of any
+  circle lying on the ground: on-screen `height / width = sin(pitch)`. Use **centre-to-centre**
+  across a ring of objects, not the outer silhouette - a uniform height offset then cancels, so
+  stones or props standing up do not bias it. XP Hero's fire pit gives 47.5°.
+- **A top-down camera foreshortens the body but not the head.** A sphere projects as a circle at
+  any pitch, so `apparent heads-tall = built heads-tall x cos(pitch)` - every character reads more
+  chibi on screen than it was modelled. At 47.5 deg that is a x0.676 error, enough to pick the wrong
+  silhouette entirely if you judge a model sheet instead of a render. Judge through the game camera,
+  and convert before comparing against a reference screenshot.
+- **Compare zoom in character-widths across the screen, not in metres or screen percentages.** It
+  is the only scale-free measure, and it survives not knowing the reference's world units. It also
+  separates two things that are easy to confuse: how far the camera is, and how the character is
+  *proportioned*. A squat chibi and a 2:1 capsule at the identical camera do not read alike.
+- **Framing tuned against marker cubes answers the wrong question.** "How much warning do I get"
+  and "is the character readable" are different questions with different answers, and a third -
+  "is a *change* to the character readable" - decides more than either, because DESIGN.md's hook is
+  a visual on the player's body. Put the real character, approach markers and stand-in props in
+  every framing sweep image (`CameraFramingSweep` does).
+
+## iOS runtime
+
+- **Unity defaults iOS to 30 fps**, silently. Any judgement about how movement feels made against a
+  default build is being made through 33 ms of latency the shipped game would not have. Set
+  `Application.targetFrameRate` (see `Graft.App.FrameRate`).
+- **ProMotion is opt-in.** Without `CADisableMinimumFrameDuration` in Info.plist, iOS caps the app
+  at 60 Hz no matter what `targetFrameRate` says, and nothing reports it. Set from a
+  `[PostProcessBuild]` callback.
 
 ## Unity 6 specifics
 
@@ -42,6 +82,10 @@ Add to this file whenever something costs more than about twenty minutes to diag
   sprite to any filled or radial image.
 - **A fresh `RectTransform` carries `sizeDelta = (100,100)`.** Give it stretch anchors without
   zeroing that and it ends up 100 units *wider* than its parent, clipping both edges.
+- **A sprite generated at runtime cannot be saved into a scene.** It needs `HideAndDontSave` to
+  avoid leaking, and that flag is exactly what stops serialisation - so the editor builds the
+  `Image` components and the component assigns their sprites in `Awake`. An `Image` with no sprite
+  is invisible, which reads as "the code is broken" rather than "the asset is missing".
 
 ## URP
 
@@ -67,8 +111,13 @@ Add to this file whenever something costs more than about twenty minutes to diag
 - **Never pass `PRODUCT_BUNDLE_IDENTIFIER` on the `xcodebuild` command line.** A command-line
   build setting applies to *every* target, so `UnityFramework.framework` inherits the app's id
   and installd rejects the install: *"parent bundle has the same identifier as sub-bundle"*.
-- **Unity generates no `Unity-iPhone` scheme** - only `GameAssembly`. Build with
-  `-target Unity-iPhone`, not `-scheme`.
+- **`-derivedDataPath` is rejected unless `-scheme` is given.** With `-target` it fails outright:
+  *"The flag -scheme, -testProductsPath, or -xctestrun is required when specifying
+  -derivedDataPath."*
+- **Unity 6 DOES generate a `Unity-iPhone` scheme.** Older Unity generated only `GameAssembly`,
+  which is where the advice to use `-target Unity-iPhone` comes from - it is wrong here, and
+  combined with the line above it is a dead end. Verified on 6000.5.8f1 with
+  `xcodebuild -project ... -list`: schemes are `GameAssembly`, `Unity-iPhone`, `UnityFramework`.
 - **`xcodebuild`'s exit status is easy to lose.** A wrapper whose last command is `tail` reports
   success over a failed build. Grep the log for `** BUILD FAILED **`.
 - **A free Apple account stops the app launching after ~7 days** and allows 3 sideloaded apps.

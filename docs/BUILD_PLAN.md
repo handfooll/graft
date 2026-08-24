@@ -129,8 +129,8 @@ UNITY="/Applications/Unity/Hub/Editor/6000.5.8f1/Unity.app/Contents/MacOS/Unity"
   -testFilter ScreenshotTour -testResults tour.xml -logFile tour.log
 ```
 
-Two traps already paid for on this machine, carried over from the deleted build's notes
-(full list in the old project archive):
+Two traps already paid for on this machine (full list in `docs/GOTCHAS.md` - the archive that
+sentence used to point at is closed under D7, and every hazard worth keeping was extracted):
 
 - `yield return new WaitForEndOfFrame()` **never resumes under `-batchmode`** and hangs until
   timeout with no error. Use `camera.Render()` + `yield return null`.

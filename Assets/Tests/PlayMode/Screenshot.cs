@@ -15,9 +15,14 @@ namespace Graft.Tests
     /// </summary>
     public static class Screenshot
     {
-        // Portrait, 9:16 - the shape the game is actually played in (D8).
+        /// <summary>
+        /// The shape the game is actually played in (D8) - an iPhone 14 Pro's 1179x2556, scaled
+        /// down. **Not 9:16.** A 720x1280 capture is 22% wider in aspect than the phone, so every
+        /// gate image drawn at that size showed more world than the device renders and every
+        /// framing judgement made from one was made about a screen that does not exist.
+        /// </summary>
         public const int Width = 720;
-        public const int Height = 1280;
+        public const int Height = 1560;
 
         public static string Directory =>
             Path.GetFullPath(Path.Combine(Application.dataPath, "..", "Screenshots"));
@@ -42,6 +47,44 @@ namespace Graft.Tests
             Debug.LogWarning("[GRAFT] No 'Mobile' quality level - capturing on " + QualitySettings.names[QualitySettings.GetQualityLevel()]);
         }
 
+        /// <summary>
+        /// A <c>ScreenSpaceOverlay</c> canvas draws straight to the display and renders **nothing**
+        /// into a camera's target texture - so any HUD would be silently missing from every gate
+        /// image. These switch to <c>ScreenSpaceCamera</c> for the duration of one render and go
+        /// straight back, because Overlay is the cheaper path and the one the phone should run.
+        /// </summary>
+        static Canvas[] BorrowOverlayCanvases(Camera camera)
+        {
+            var borrowed = Object.FindObjectsByType<Canvas>(FindObjectsSortMode.None);
+            var switched = new System.Collections.Generic.List<Canvas>();
+            foreach (var canvas in borrowed)
+            {
+                if (canvas.renderMode != RenderMode.ScreenSpaceOverlay)
+                {
+                    continue;
+                }
+
+                canvas.renderMode = RenderMode.ScreenSpaceCamera;
+                canvas.worldCamera = camera;
+                canvas.planeDistance = Mathf.Max(camera.nearClipPlane * 2f, 1f);
+                switched.Add(canvas);
+            }
+
+            Canvas.ForceUpdateCanvases();
+            return switched.ToArray();
+        }
+
+        static void ReturnOverlayCanvases(Canvas[] canvases)
+        {
+            foreach (var canvas in canvases)
+            {
+                if (canvas != null)
+                {
+                    canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+                }
+            }
+        }
+
         public static string Capture(string name, Camera camera = null)
         {
             camera = camera != null ? camera : Camera.main;
@@ -58,9 +101,14 @@ namespace Graft.Tests
             var previousActive = RenderTexture.active;
             var image = new Texture2D(Width, Height, TextureFormat.RGB24, false);
 
+            Canvas[] canvases = null;
+
             try
             {
+                // Target texture first: a ScreenSpaceCamera canvas sizes itself to the camera's
+                // viewport, and the viewport is the texture only once the texture is assigned.
                 camera.targetTexture = target;
+                canvases = BorrowOverlayCanvases(camera);
                 camera.Render();
 
                 RenderTexture.active = target;
@@ -75,6 +123,11 @@ namespace Graft.Tests
             }
             finally
             {
+                if (canvases != null)
+                {
+                    ReturnOverlayCanvases(canvases);
+                }
+
                 camera.targetTexture = previousTarget;
                 RenderTexture.active = previousActive;
                 Object.DestroyImmediate(image);

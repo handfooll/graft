@@ -58,7 +58,7 @@ namespace Graft.Tests
         {
             // Guards against reasoning about the vertical FOV and forgetting 9:16 squeezes the
             // horizontal field to well under half of it.
-            var width = Framing.VisibleWidth(720f / 1280f);
+            var width = Framing.VisibleWidthOnDevice;
             Assert.Greater(width, 6f, "Less than 6 m of world on screen leaves no room to react.");
             Assert.Less(width, 30f, "Over 30 m and the player is a speck.");
         }

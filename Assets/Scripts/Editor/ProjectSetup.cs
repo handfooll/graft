@@ -21,13 +21,17 @@ namespace Graft.Editor
     {
         public const string BundleIdentifier = "com.handfooll.graft";
         public const string CameraFramingPath = "Assets/Settings/CameraFraming.asset";
+        public const string MovementTuningPath = "Assets/Settings/MovementTuning.asset";
+        public const string CharacterProportionsPath = "Assets/Settings/CharacterProportions.asset";
 
         public static void ConfigureAll()
         {
             ConfigurePlayer();
             var framing = EnsureCameraFraming();
+            var movement = EnsureMovementTuning();
+            var shape = EnsureCharacterProportions();
             RenderPipelineSetup.Configure(framing);
-            BootstrapSceneBuilder.Build(framing);
+            BootstrapSceneBuilder.Build(framing, movement, shape);
             SwitchToiOS();
             AssetDatabase.SaveAssets();
             Debug.Log($"[GRAFT] ProjectSetup.ConfigureAll complete. Active build target: {EditorUserBuildSettings.activeBuildTarget}, colour space: {PlayerSettings.colorSpace}.");
@@ -40,19 +44,37 @@ namespace Graft.Editor
         /// Loads the camera framing asset, creating it at its defaults if it is missing, so a fresh
         /// clone configures itself without anyone opening the editor.
         /// </summary>
-        public static CameraFraming EnsureCameraFraming()
+        public static CameraFraming EnsureCameraFraming() =>
+            EnsureAsset<CameraFraming>(CameraFramingPath);
+
+        /// <summary>
+        /// Loads the movement tuning asset, creating it at its defaults if missing. Same reasoning
+        /// as <see cref="EnsureCameraFraming"/>: a fresh clone configures itself from git alone.
+        /// </summary>
+        public static MovementTuning EnsureMovementTuning() =>
+            EnsureAsset<MovementTuning>(MovementTuningPath);
+
+        /// <summary>
+        /// Loads the character silhouette, creating it at its defaults if missing. Phase 6 replaces
+        /// the primitives with real meshes, but the proportions chosen here are what the camera and
+        /// the graft sockets were built against, so they outlive the primitives.
+        /// </summary>
+        public static CharacterProportions EnsureCharacterProportions() =>
+            EnsureAsset<CharacterProportions>(CharacterProportionsPath);
+
+        static T EnsureAsset<T>(string path) where T : ScriptableObject
         {
-            var existing = AssetDatabase.LoadAssetAtPath<CameraFraming>(CameraFramingPath);
+            var existing = AssetDatabase.LoadAssetAtPath<T>(path);
             if (existing != null)
             {
                 return existing;
             }
 
-            Directory.CreateDirectory(Path.GetDirectoryName(CameraFramingPath));
-            var framing = ScriptableObject.CreateInstance<CameraFraming>();
-            AssetDatabase.CreateAsset(framing, CameraFramingPath);
-            Debug.Log($"[GRAFT] Created {CameraFramingPath} at defaults.");
-            return framing;
+            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            var created = ScriptableObject.CreateInstance<T>();
+            AssetDatabase.CreateAsset(created, path);
+            Debug.Log($"[GRAFT] Created {path} at defaults.");
+            return created;
         }
 
         static void ConfigurePlayer()

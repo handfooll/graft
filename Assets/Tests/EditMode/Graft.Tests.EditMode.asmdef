@@ -7,7 +7,9 @@
         "Graft.Core",
         "Graft.Game",
         "Graft.UI",
-        "Graft.App"
+        "Graft.App",
+        "Graft.Editor",
+        "Unity.Cinemachine"
     ],
     "includePlatforms": [
         "Editor"
