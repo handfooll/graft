@@ -826,6 +826,19 @@ namespace Graft.Tests
             return regions.AnchorFor(Area.Verge);
         }
 
+        /// <summary>
+        /// Renders the capture, then holds it against the version a human approved.
+        ///
+        /// The baseline check is the part that earns its place. Every assertion in this file
+        /// describes something a test author thought to look for; the baseline catches what nobody
+        /// thought of - an enemy that has wandered into a picture about biome colour, a health bar
+        /// that stopped rendering, a shadow that vanished when the sun angle moved. All of those
+        /// leave every other test green.
+        ///
+        /// Set <c>GRAFT_REBASELINE=1</c> to write the captures in as the new approved images
+        /// instead of comparing against them. That is a deliberate, separate act - a gate that
+        /// re-approves whatever it just rendered is not a gate.
+        /// </summary>
         static void Capture(string name)
         {
             var path = Screenshot.Capture(name);
@@ -833,7 +846,33 @@ namespace Graft.Tests
             Assert.Greater(new FileInfo(path).Length, 2048,
                 "Capture is suspiciously small - this is what an empty render looks like. " +
                 "Check the tour was run without -nographics.");
+
+            if (Rebaselining)
+            {
+                GateBaselines.Approve(name, path);
+                Debug.Log($"[GRAFT] baseline approved -> {name}");
+                return;
+            }
+
+            var changed = GateBaselines.CompareWithBaseline(name, path, out var detail);
+            if (changed < 0f)
+            {
+                // No baseline yet. A warning rather than a failure, so adding a capture does not
+                // break the tour on the run that introduces it.
+                Debug.LogWarning($"[GRAFT] {detail}");
+                return;
+            }
+
+            Assert.LessOrEqual(changed, GateBaselines.ChangedPixelTolerance,
+                $"'{name}' no longer matches the image that was approved. {detail}\n" +
+                "If the change is intended, look at it first and then re-approve with:\n" +
+                "  GRAFT_REBASELINE=1 <tour command>\n" +
+                "If it is not intended, something has changed this picture without meaning to - " +
+                "which is the entire reason this check exists.");
         }
+
+        static bool Rebaselining =>
+            System.Environment.GetEnvironmentVariable("GRAFT_REBASELINE") == "1";
 
         static PlayerController FindPlayer()
         {
@@ -860,9 +899,12 @@ namespace Graft.Tests
         }
 
         /// <summary>
-        /// Drives for a span of simulated time rather than a count of frames. Headless play mode
-        /// runs uncapped, so a frame count buys an unpredictable amount of movement - a capture
-        /// posed by frame count would drift the moment this machine got faster.
+        /// Drives for a span of simulated time rather than a count of frames. A frame count buys
+        /// an unpredictable amount of movement - a capture posed by frame count would drift the
+        /// moment this machine got faster.
+        ///
+        /// Simulated time is only trustworthy here because <see cref="CaptureTimestep"/> pins the
+        /// clock to a fixed step per frame. Read that note before changing either.
         /// </summary>
         static IEnumerator Seconds(float seconds)
         {
@@ -874,9 +916,36 @@ namespace Graft.Tests
             }
         }
 
+        /// <summary>
+        /// Simulated seconds per frame while the tour runs.
+        ///
+        /// **Without this the gate images are not reproducible, and that is not a small thing** -
+        /// the whole reason `Screenshots/` is gitignored is the claim that every image in it can be
+        /// re-made from the tests. Headless play mode runs uncapped, so a pose held for "1.2
+        /// seconds" gets a different number of frames on every run and a different number of
+        /// NavMesh steps with it. Two Phase 3 captures drifted by 8.2% and 2.4% of their pixels
+        /// between consecutive runs of identical code.
+        ///
+        /// <c>Time.captureDeltaTime</c> is Unity's answer to exactly this: every frame advances the
+        /// clock by precisely this much, whatever the machine was doing. It is what recording tools
+        /// use, and a gate image is a recording.
+        /// </summary>
+        const float CaptureTimestep = 1f / 60f;
+
+        /// <summary>
+        /// Fixed so that anything asking for a random number during a capture asks for the same
+        /// one every time. `EnemyAgent` spreads NavMesh avoidance priorities randomly, which is
+        /// right in play - a crowd converging on one point should not deadlock with every agent
+        /// equally entitled to the same metre - and is one of the things that made these two
+        /// pictures different on every run.
+        /// </summary>
+        const int CaptureSeed = 20260828;
+
         static IEnumerator LoadWorld()
         {
             Screenshot.UseDeviceQualityLevel();
+            Time.captureDeltaTime = CaptureTimestep;
+            Random.InitState(CaptureSeed);
             yield return SceneManager.LoadSceneAsync("World", LoadSceneMode.Single);
 
             // Spawning off by default, for every capture in this file.

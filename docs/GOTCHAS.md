@@ -22,6 +22,25 @@ Add to this file whenever something costs more than about twenty minutes to diag
 - **The editor renders at the "PC" quality level, iOS renders at "Mobile".** Captures force
   Mobile, or the gate images are judged on a render path the phone never uses.
 
+## Determinism in captures
+
+- **Headless play mode runs uncapped, so "wait 1.2 seconds" is a different number of frames every
+  run.** Anything simulated over that span - NavMesh steps, spawn ticks, avoidance - lands somewhere
+  slightly different each time, and the gate images stop being reproducible. Two Phase 3 captures
+  drifted **8.2%** and **2.4%** of their pixels between consecutive runs of identical code. Set
+  `Time.captureDeltaTime` (the tour uses 1/60) so every frame advances the clock by exactly the same
+  amount, and `Random.InitState` so anything drawing a random number draws the same one.
+  Found by the baseline check, which is the only reason anyone knew.
+- **`Screenshots/` is gitignored because every image is reproducible - so reproducibility has to
+  actually be true.** The approved baselines live in `Tests/GateBaselines/` and *are* committed.
+
+## Disk and worktrees
+
+- **Clone `Library/` into a new worktree with `cp -Rc`, not a fresh import.** On APFS that is a
+  copy-on-write clone: 2.5 GB, instant, and **zero additional disk used**. A fresh Unity import of
+  the same project takes minutes and really does cost the gigabytes. Matters here because the disk
+  has been sitting above 90% since August.
+
 ## Cameras and framing
 
 - **The phone is not 9:16.** An iPhone 14 Pro is 1179x2556 - aspect **0.461**, not 0.5625. A
