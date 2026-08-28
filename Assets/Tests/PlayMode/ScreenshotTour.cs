@@ -327,6 +327,449 @@ namespace Graft.Tests
             Capture("phase2_6_world_edge");
         }
 
+        // ---------------------------------------------------------------------------------------
+        // Phase 3. BUILD_PLAN.md: "a fight in progress - several enemies converging, health bars
+        // visible, a hit landing. Plus: enemies must be seen to path around obstacles, not walk
+        // through them."
+        //
+        // Every fight below is posed by hand with the spawn director switched off. A gate image
+        // arranged by a live difficulty director is a different image every run, and a gate you
+        // cannot re-shoot is not a gate. The one exception is the last capture, which is about what
+        // the director itself produces and would be dishonest posed.
+        // ---------------------------------------------------------------------------------------
+
+        /// <summary>
+        /// The gate's first sentence: several enemies converging. Four of them, closing from
+        /// different bearings, with the player already shooting.
+        ///
+        /// This is also where STATUS.md's deferred camera question gets its answer - *can I see a
+        /// threat in time to react* - because until now there were no threats to see. The
+        /// assertion is the useful half: enemies have to be inside the frame and still short of
+        /// the player when the shutter opens. If they can only be photographed already touching
+        /// them, the framing is too tight and the number in CameraFraming.asset is wrong.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator Phase3_Converging()
+        {
+            yield return LoadWorld();
+            var player = FindPlayer();
+            Drive(player, Vec2.Zero);
+
+            var regions = Object.FindAnyObjectByType<WorldRegions>();
+            yield return Stage(player, regions.AnchorFor(Area.Verge), 0f);
+
+            // The Verge's own mix - mostly Venom, with an Impact lumbering behind. Bearings are
+            // kept shallow because the frame is portrait: at nine metres out, a bearing of 120
+            // degrees puts an enemy seven metres to the side, which is a metre and a half outside
+            // a 9.5 m frame. It is on the field and in the fight and simply not in the picture.
+            Spawn(EnemyFamily.Venom, player, 15f, 9f);
+            Spawn(EnemyFamily.Venom, player, -25f, 9.5f);
+            Spawn(EnemyFamily.Venom, player, 160f, 8.5f);
+            Spawn(EnemyFamily.Impact, player, -150f, 8f);
+
+            // Long enough to be closing, short enough not to have arrived. Venom covers 4.2 m/s,
+            // so by 1.6 s they are standing on the player and the picture is of a scrum rather
+            // than of a convergence - which is a different thing and a less useful one to judge.
+            yield return Seconds(1.2f);
+
+            var registry = Registry();
+            var framing = Object.FindAnyObjectByType<CameraRig>().Framing;
+            var half = framing.VisibleWidthOnDevice * 0.5f;
+
+            var onScreen = 0;
+            var nearest = float.MaxValue;
+            foreach (var agent in registry.Live)
+            {
+                var offset = agent.transform.position - player.transform.position;
+                offset.y = 0f;
+                nearest = Mathf.Min(nearest, offset.magnitude);
+                if (Mathf.Abs(offset.x) <= half)
+                {
+                    onScreen++;
+                }
+            }
+
+            Assert.AreEqual(4, onScreen,
+                $"Only {onScreen} of the four enemies are within the frame's width. The gate asks " +
+                "for several converging, and enemies fighting outside the picture are not that.");
+            Assert.Greater(nearest, 2f,
+                $"The closest enemy is already {nearest:0.0} m away when the picture is taken, " +
+                "which is a scrum rather than a convergence.");
+
+            Capture("phase3_0_converging");
+        }
+
+        /// <summary>
+        /// The gate's second and third sentences: health bars visible, and a hit landing.
+        ///
+        /// Timed off the damage itself rather than off a stopwatch. The impact burst lives about
+        /// two tenths of a second and the hit flash less than one, so a capture taken at a fixed
+        /// delay lands on whichever frame it lands on and the picture is of a fight in which
+        /// nothing is happening. Waiting for the blow and then photographing a moment later is the
+        /// difference between a gate image and a lucky one.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator Phase3_HitLanding()
+        {
+            yield return LoadWorld();
+            var player = FindPlayer();
+            Drive(player, Vec2.Zero);
+
+            var regions = Object.FindAnyObjectByType<WorldRegions>();
+            yield return Stage(player, regions.AnchorFor(Area.Verge), 0f);
+
+            // Hide is the target, for two reasons that are both about the picture. It is the
+            // slowest family, so it is still at a readable distance after the shots needed to
+            // drain its bar rather than standing on top of the player - and it has the most health,
+            // so it survives them. Placed just inside the player's reach so the auto-attack opens
+            // immediately.
+            //
+            // A Venom further back keeps its bar at full, because a bar coming down only reads as
+            // damage when there is an undamaged one next to it.
+            var struck = Spawn(EnemyFamily.Hide, player, 12f, 6.3f);
+            Spawn(EnemyFamily.Venom, player, -34f, 9f);
+            Assert.IsNotNull(struck, "Nothing could be spawned to shoot at.");
+
+            var hits = 0;
+            struck.Health.Damaged += (_, amount) =>
+            {
+                if (amount > 0f)
+                {
+                    hits++;
+                }
+            };
+
+            // Wait for the third blow, so the bar is visibly down rather than a sliver off full.
+            var guard = 0f;
+            while (hits < 3 && guard < 8f)
+            {
+                guard += Time.deltaTime;
+                yield return null;
+            }
+
+            Assert.GreaterOrEqual(hits, 3,
+                "The player never landed three shots on a target standing inside their reach. " +
+                "The auto-attack is not firing.");
+
+            // Long enough for the burst to have opened out, short enough that it is still there.
+            yield return Seconds(0.05f);
+
+            Assert.IsTrue(struck.Health.IsAlive, "The target died before the picture was taken.");
+            Assert.Less(struck.Health.Fraction, 0.95f, "The target's bar is still effectively full.");
+
+            var range = (struck.transform.position - player.transform.position).magnitude;
+            Assert.Greater(range, 2.5f,
+                $"The target closed to {range:0.0} m before the third shot landed. At that range " +
+                "it, the player and the burst are one overlapping mass and nothing in the picture " +
+                "is legible as anything.");
+
+            Capture("phase3_1_hit_landing");
+        }
+
+        /// <summary>
+        /// The gate's other half, and the reason enemies are NavMeshAgents rather than something
+        /// steering at the player: "enemies must be seen to path around obstacles, not walk
+        /// through them".
+        ///
+        /// The obstacle is a real scattered prop, found by searching for the largest collider near
+        /// the Verge's anchor rather than by typing a coordinate - props are scattered from a seed
+        /// and a hand-picked one stops being there the moment anything about the layout changes.
+        ///
+        /// A picture cannot prove this on its own: an enemy beside a rock looks the same whether it
+        /// went around or is about to go through. So the assertions carry the claim - the path has
+        /// a bend in it, and the enemy's own track never entered the obstacle - and the picture
+        /// shows what that looks like.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator Phase3_PathingAroundObstacles()
+        {
+            yield return LoadWorld();
+            var player = FindPlayer();
+            Drive(player, Vec2.Zero);
+
+            var regions = Object.FindAnyObjectByType<WorldRegions>();
+            var obstacle = LargestPropNear(regions.AnchorFor(Area.Verge), 45f);
+            Assert.IsNotNull(obstacle,
+                "No prop with a collider near the Verge's anchor - there is nothing in the world " +
+                "to path around, and the NavMesh would have nothing to carve holes in either.");
+            Assert.Greater(Mathf.Min(obstacle.bounds.extents.x, obstacle.bounds.extents.z), 0.7f,
+                "The largest prop within 45 m of the Verge is too small to make a detour worth " +
+                "photographing. A route bending around a stump is a correct path and an " +
+                "unconvincing picture.");
+
+            var bounds = obstacle.bounds;
+            var centre = new Vector3(bounds.center.x, 0f, bounds.center.z);
+            var girth = Mathf.Max(bounds.extents.x, bounds.extents.z);
+
+            // Player on one side, enemy directly opposite, obstacle exactly between them. Along Z
+            // so the detour runs up the screen, which is the long axis in portrait.
+            //
+            // The gap is what decides whether this is a gate image or just a passing test. Set it
+            // too generously and the assertions all still hold - the route bends, the enemy stays
+            // out of the rock - while the enemy itself starts beyond the top of the frame and has
+            // walked past the obstacle by the time the shutter opens. The picture is then of a
+            // player standing next to a boulder, proving nothing.
+            var gap = girth + 3.2f;
+            yield return Stage(player, centre - Vector3.forward * gap, 0f);
+
+            // Impact rather than Venom: half the speed, so it is still alongside the obstacle when
+            // photographed instead of past it, and much the largest silhouette in the game.
+            var chaser = Spawn(EnemyFamily.Impact, player, 0f, gap * 2f);
+            Assert.IsNotNull(chaser, "Could not place an enemy on the far side of the obstacle.");
+
+            // Let the agent compute a route before asking what it looks like. Waiting on
+            // pathPending alone is not enough and fails in a way that looks like a real result:
+            // the destination is set from EnemyAgent's own Update, which has not run yet on the
+            // frame the spawn returns on, so pathPending is false, the wait falls straight through,
+            // and the agent reports a one-corner path - which reads as "walked straight at it".
+            var guard = 0f;
+            while ((chaser.Agent.pathPending || !chaser.Agent.hasPath) && guard < 3f)
+            {
+                guard += Time.deltaTime;
+                yield return null;
+            }
+
+            Assert.IsTrue(chaser.Agent.hasPath, "The enemy never worked out a route to the player at all.");
+
+            var corners = chaser.Agent.path.corners;
+            Assert.GreaterOrEqual(corners.Length, 3,
+                $"The route to the player is {corners.Length} corners - a straight line. The " +
+                "obstacle is not carving the NavMesh, so nothing is being pathed around.");
+
+            var straight = Vector3.Distance(chaser.transform.position, player.transform.position);
+            Assert.Greater(PathLength(corners), straight * 1.05f,
+                "The route is no longer than walking straight through the obstacle would be.");
+
+            // Now walk it, watching that the enemy never enters the thing it is going around.
+            var flattened = new Bounds(
+                new Vector3(bounds.center.x, 0f, bounds.center.z),
+                new Vector3(bounds.size.x, 100f, bounds.size.z));
+
+            // Walked until it is alongside the obstacle rather than for a fixed spell: that is the
+            // one moment in the whole crossing at which a still image shows a detour rather than
+            // just an enemy that happens to be somewhere.
+            var deadline = Time.time + 6f;
+            while (Time.time < deadline && chaser.transform.position.z > centre.z)
+            {
+                var at = chaser.transform.position;
+                Assert.IsFalse(flattened.Contains(new Vector3(at.x, 0f, at.z)),
+                    "The enemy walked into the obstacle rather than around it.");
+                yield return null;
+            }
+
+            // The assertions above are all true of an enemy that is not in the picture, so this is
+            // the one that makes it a gate image: the detour has to be on screen.
+            var offset = chaser.transform.position - player.transform.position;
+            var framing = Object.FindAnyObjectByType<CameraRig>().Framing;
+            Assert.Less(Mathf.Abs(offset.x), framing.VisibleWidthOnDevice * 0.5f,
+                $"The enemy is {Mathf.Abs(offset.x):0.0} m to the side and outside the frame - the " +
+                "picture would show a player next to a rock and prove nothing.");
+            Assert.Less(offset.magnitude, 9f,
+                $"The enemy is {offset.magnitude:0.0} m away, past the top of a portrait frame.");
+            Assert.IsTrue(chaser.Health.IsAlive, "The enemy was shot before it finished the detour.");
+
+            Capture("phase3_2_pathing_around");
+        }
+
+        /// <summary>
+        /// The four families side by side, so the thing that actually has to be judged can be:
+        /// whether they are tellable apart.
+        ///
+        /// <c>CombatAssetTests</c> asserts their footprints differ, which is a number. Whether the
+        /// difference *reads*, under this camera, on ground that is one of them a similar colour,
+        /// is not a number - it is this picture. Left to right in the order DESIGN.md §5 names
+        /// them: Venom, Impact, Hide, Spark.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator Phase3_FourFamilies()
+        {
+            yield return LoadWorld();
+            var player = FindPlayer();
+            Drive(player, Vec2.Zero);
+
+            var regions = Object.FindAnyObjectByType<WorldRegions>();
+            yield return Stage(player, regions.AnchorFor(Area.Verge), 0f);
+
+            // Ranked up-screen of the player and captured immediately, before anyone has taken a
+            // step. They are all out of their own reach and would otherwise close and bunch up.
+            var origin = player.transform.position + Vector3.forward * 3.4f;
+            var spacing = 2.3f;
+            var families = EnemyFamilies.All;
+
+            for (var i = 0; i < families.Length; i++)
+            {
+                var offset = (i - (families.Length - 1) * 0.5f) * spacing;
+                var agent = Spawn(families[i], origin + Vector3.right * offset);
+                Assert.IsNotNull(agent, $"Could not place a {families[i]} for the family line-up.");
+                // Turned to the camera rather than to the player, so all four are seen from the
+                // same angle and the comparison is of the shapes rather than of their headings.
+                agent.transform.rotation = Quaternion.Euler(0f, 180f, 0f);
+            }
+
+            yield return Frames(2);
+
+            Assert.AreEqual(families.Length, Registry().TargetableCount,
+                "Not every family made it onto the ground for the line-up.");
+
+            Capture("phase3_3_four_families");
+        }
+
+        /// <summary>
+        /// The one capture that is not posed: Ember Scar, with the real spawn director running.
+        ///
+        /// Everything above proves a fight can be arranged. This proves the tables produce one -
+        /// the deepest biome at its own cap, its own pacing and its own family mix, which is the
+        /// difficulty dial of DESIGN.md §7 actually turning rather than being described.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator Phase3_EmberScarSwarm()
+        {
+            yield return LoadWorld();
+            var player = FindPlayer();
+            Drive(player, Vec2.Zero);
+
+            var regions = Object.FindAnyObjectByType<WorldRegions>();
+            var spawner = Spawner();
+            spawner.ClearField();
+
+            player.Teleport(regions.AnchorFor(Area.EmberScar), 0f);
+            yield return Frames(2);
+
+            Assert.AreEqual(Area.EmberScar, regions.AreaAt(player.transform.position),
+                "Not standing in Ember Scar - the tables being read are the wrong ones.");
+
+            // The director's own pacing, not the tour's. Ember Scar sends one a second to a cap of
+            // ten, so a few seconds is a crowd and nothing here decides how big.
+            spawner.Running = true;
+            yield return Seconds(7f);
+            spawner.Running = false;
+
+            var registry = Registry();
+            Assert.GreaterOrEqual(registry.Count, 4,
+                $"Ember Scar produced only {registry.Count} enemies in seven seconds of its own " +
+                "spawning. The deepest biome in the game should be crowded.");
+            Assert.AreEqual(Area.EmberScar, spawner.CurrentArea);
+
+            yield return Seconds(1.5f);
+            Capture("phase3_4_ember_scar_swarm");
+        }
+
+        // -- Phase 3 helpers --------------------------------------------------------------------
+
+        static EnemySpawner Spawner()
+        {
+            var spawner = Object.FindAnyObjectByType<EnemySpawner>();
+            Assert.IsNotNull(spawner, "No EnemySpawner in the World scene - there is no fight to photograph.");
+            return spawner;
+        }
+
+        static EnemyRegistry Registry()
+        {
+            var registry = Object.FindAnyObjectByType<EnemyRegistry>();
+            Assert.IsNotNull(registry, "No EnemyRegistry in the World scene.");
+            return registry;
+        }
+
+        /// <summary>Clears the field and puts the player where the fight is going to happen.</summary>
+        static IEnumerator Stage(PlayerController player, Vector3 at, float heading)
+        {
+            var spawner = Spawner();
+            spawner.Running = false;
+            spawner.ClearField();
+
+            var effects = Object.FindAnyObjectByType<CombatEffects>();
+            Assert.IsNotNull(effects, "No CombatEffects in the World scene - nothing could fire.");
+            effects.ClearShots();
+
+            player.Teleport(at, heading);
+            // Two frames rather than one: the camera is damped, and the first frame after a
+            // teleport still has it where the player used to be.
+            yield return Frames(2);
+        }
+
+        /// <summary>Places one enemy on a bearing and distance from the player.</summary>
+        static EnemyAgent Spawn(EnemyFamily family, PlayerController player, float bearing, float distance)
+        {
+            var offset = Quaternion.Euler(0f, bearing, 0f) * Vector3.forward * distance;
+            return Spawn(family, player.transform.position + offset);
+        }
+
+        static EnemyAgent Spawn(EnemyFamily family, Vector3 at) =>
+            Spawner().Spawn(family, at, 1f);
+
+        /// <summary>
+        /// The biggest scattered prop with a collider within <paramref name="radius"/>, ignoring
+        /// any that sits too near the edge of the world.
+        ///
+        /// Biggest, because the point is a detour long enough to see - a route bending around a
+        /// half-metre stump is a correct path and an unconvincing picture. Ranked on the *smaller*
+        /// of its two horizontal extents, because a prop that is wide one way and thin the other
+        /// is something an agent walks past rather than around.
+        ///
+        /// The clearance is the same lesson Phase 2's border capture had to learn. The first
+        /// version of this search found a perfectly good boulder that happened to be near the
+        /// boundary, and the resulting gate image was a third full of five-metre wall - every
+        /// assertion true, and the eye drawn to the one object in frame that has nothing to do
+        /// with what is being judged.
+        /// </summary>
+        static Collider LargestPropNear(Vector3 centre, float radius)
+        {
+            var regions = Object.FindAnyObjectByType<WorldRegions>();
+            Collider best = null;
+            var bestSize = 0f;
+
+            foreach (var hit in Physics.OverlapSphere(centre, radius))
+            {
+                var owner = hit.transform.parent;
+                if (owner == null || !owner.name.EndsWith("_Prop"))
+                {
+                    continue;
+                }
+
+                var size = Mathf.Min(hit.bounds.extents.x, hit.bounds.extents.z);
+                if (size <= bestSize || !ClearOfTheEdge(regions, hit.bounds.center, 14f))
+                {
+                    continue;
+                }
+
+                bestSize = size;
+                best = hit;
+            }
+
+            return best;
+        }
+
+        /// <summary>Whether the world still exists <paramref name="reach"/> metres out all round.</summary>
+        static bool ClearOfTheEdge(WorldRegions regions, Vector3 at, float reach)
+        {
+            if (regions == null)
+            {
+                return true;
+            }
+
+            for (var bearing = 0f; bearing < 360f; bearing += 45f)
+            {
+                var probe = at + Quaternion.Euler(0f, bearing, 0f) * Vector3.forward * reach;
+                if (!regions.TryAreaAt(probe, out _))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        static float PathLength(Vector3[] corners)
+        {
+            var total = 0f;
+            for (var i = 1; i < corners.Length; i++)
+            {
+                total += Vector3.Distance(corners[i - 1], corners[i]);
+            }
+
+            return total;
+        }
+
         /// <summary>
         /// Stands the player at an area's anchor, facing the way you would be walking, and
         /// captures.
@@ -435,6 +878,20 @@ namespace Graft.Tests
         {
             Screenshot.UseDeviceQualityLevel();
             yield return SceneManager.LoadSceneAsync("World", LoadSceneMode.Single);
+
+            // Spawning off by default, for every capture in this file.
+            //
+            // Phase 3 put a live spawn director in the World scene, and the Phase 1 and Phase 2
+            // gate images were approved without one. Left running, it would quietly redecorate
+            // eleven already-signed-off pictures with enemies - and "the world takes shape" is not
+            // a claim you can re-judge through a fight happening in front of it. The Phase 3
+            // captures turn it back on, or pose their own.
+            var spawner = Object.FindAnyObjectByType<EnemySpawner>();
+            if (spawner != null)
+            {
+                spawner.Running = false;
+            }
+
             yield return Frames(SettleFrames);
             Assert.IsNotNull(Camera.main, "World scene has no camera tagged MainCamera.");
         }

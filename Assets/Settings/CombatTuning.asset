@@ -26,7 +26,7 @@ MonoBehaviour:
   healthBarWidth: 1.15
   healthBarHeight: 0.15
   healthBarLift: 0.34
-  healthBarFill: {r: 0.94, g: 0.3, b: 0.26, a: 1}
+  healthBarFill: {r: 0.86, g: 0.08, b: 0.06, a: 1}
   healthBarBackdrop: {r: 0.06, g: 0.06, b: 0.07, a: 1}
   healthBarsAlwaysVisible: 1
   playerProjectileMaterial: {fileID: 2100000, guid: 486a4221e9112429a9fcef5659266b65, type: 2}

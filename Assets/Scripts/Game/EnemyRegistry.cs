@@ -60,18 +60,22 @@ namespace Graft.Game
         public EnemyAgent At(int index) =>
             index >= 0 && index < _live.Count ? _live[index] : null;
 
-        /// <summary>Kills everything on the field outright. Used to reset between gate captures.</summary>
-        public void ClearAll()
+        /// <summary>How many are alive and still worth shooting - dying ones do not count.</summary>
+        public int TargetableCount
         {
-            for (var i = _live.Count - 1; i >= 0; i--)
+            get
             {
-                if (_live[i] != null)
+                var count = 0;
+                foreach (var agent in _live)
                 {
-                    _live[i].Retire();
+                    if (agent != null && agent.IsTargetable)
+                    {
+                        count++;
+                    }
                 }
-            }
 
-            _live.Clear();
+                return count;
+            }
         }
     }
 }

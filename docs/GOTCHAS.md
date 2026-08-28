@@ -83,6 +83,30 @@ Add to this file whenever something costs more than about twenty minutes to diag
   the design (`WorldLayout` is), the asset has to be deleted to pick a change up. It looks exactly
   like an edit that did not compile.
 
+## Editor asset creation
+
+- **`AssetDatabase.CreateAsset` part-way through a scene build does not reach disk.** Creating
+  materials between `EditorSceneManager.NewScene` and `SaveScene` produces no `.mat` file, and
+  every reference to one serialises as `{fileID: 0}`. Nothing throws, the scene saves, and
+  `ConfigureAll` exits zero - the first sign is a fight rendered entirely in default white.
+  Create project assets **before** the scene build and `SaveAssets()` immediately.
+  This hid for a whole phase because the world's materials were all already on disk from the run
+  that first made them, so `GetOrCreate` never took the create path again.
+
+## Primitives
+
+- **A `Quad` is one-sided and it is culled from behind.** Whether a camera-facing quad is visible
+  at all comes down to which way Unity's quad mesh points once it has been through the camera's
+  rotation plus whatever correction was applied - and getting it backwards throws nothing, logs
+  nothing, and renders nothing, which is indistinguishable from never having built the object.
+  For anything small and always-facing (health bars), use a **flattened `Cube`**: it has no wrong
+  side and at 2 cm thick it looks identical under a camera that cannot move.
+- **Emission is added on top of the lit result, not blended with it.** With a directional light at
+  1.9, an emissive material at strength 1.25 is being multiplied by roughly 3, so any channel above
+  ~0.3 clips and the object tonemaps toward white. A saturated red bar needs its *green and blue*
+  kept low - near-zero - and lets red clip on its own. Raising the red does nothing; lowering the
+  other two is the whole fix. (Same trap as Ember Scar's vents, from the other direction.)
+
 ## iOS runtime
 
 - **Unity defaults iOS to 30 fps**, silently. Any judgement about how movement feels made against a

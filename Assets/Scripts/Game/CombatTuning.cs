@@ -70,7 +70,12 @@ namespace Graft.Game
         [Tooltip("Metres above the enemy's own height. Clear of the head, under the next enemy's feet.")]
         [Range(0f, 1.5f)] public float healthBarLift = 0.34f;
 
-        public Color healthBarFill = new Color(0.94f, 0.30f, 0.26f);
+        [Tooltip("Deliberately near-pure in the red channel. The fill material is emissive so it " +
+                 "stays readable in shadow, and emission adds on top of a sun already at 1.9 - so " +
+                 "any green and blue in this colour is multiplied straight past 1.0 and the bar " +
+                 "tonemaps to pale pink. Keeping green and blue low lets red clip on its own, " +
+                 "which is what leaves it looking like a health bar instead of a highlight.")]
+        public Color healthBarFill = new Color(0.86f, 0.08f, 0.06f);
         public Color healthBarBackdrop = new Color(0.06f, 0.06f, 0.07f, 1f);
 
         [Tooltip("On: every living enemy carries a bar. Off: a bar appears only once something " +

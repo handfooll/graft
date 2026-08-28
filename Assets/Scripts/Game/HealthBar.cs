@@ -19,6 +19,18 @@ namespace Graft.Game
     {
         const string RootName = "HealthBar";
 
+        /// <summary>
+        /// How thick the bar is, in metres. It is a flattened cube rather than a quad.
+        ///
+        /// A quad has one face and is culled from behind, so whether it is visible at all comes
+        /// down to which way Unity's quad mesh happens to point once it has been through the
+        /// camera's rotation and a 180-degree correction. Getting that backwards costs nothing at
+        /// build time, throws no error, and produces enemies with no health bars - which is
+        /// indistinguishable from never having built one. A box has no wrong side, and at two
+        /// centimetres it reads identically under a camera that cannot move.
+        /// </summary>
+        const float Thickness = 0.02f;
+
         Damageable _owner;
         Transform _root;
         Transform _fill;
@@ -117,11 +129,16 @@ namespace Graft.Game
                 return;
             }
 
-            // Shrinks from the right by scaling the quad and walking it left by half of what it
-            // lost, because a quad scales about its centre and a bar that empties from both ends
+            // Shrinks from the right by scaling the bar and walking it left by half of what it
+            // lost, because it scales about its own centre and a bar that empties from both ends
             // reads as a countdown rather than as damage.
-            _fill.localScale = new Vector3(Mathf.Max(0.0001f, fraction), 1f, 1f);
-            _fill.localPosition = new Vector3(-(1f - fraction) * _width * 0.5f, 0f, -0.01f);
+            //
+            // Both numbers are in the holder's units, not metres - the holder is already scaled to
+            // the bar's real width, which is the whole reason this is two lines. Offsetting by
+            // metres here multiplies by that width a second time and the fill slides clean off the
+            // end of its own backdrop.
+            _fill.localScale = new Vector3(Mathf.Max(0.0001f, fraction), 1f, Thickness);
+            _fill.localPosition = new Vector3(-(1f - fraction) * 0.5f, 0f, -Thickness);
         }
 
         void EnsureBuilt(CombatTuning tuning)
@@ -135,39 +152,38 @@ namespace Graft.Game
             if (existing != null)
             {
                 _root = existing;
-                _fill = existing.Find("Fill");
+                // Not existing.Find("Fill") - the fill sits under the holder, and Transform.Find
+                // with a bare name only looks at direct children. It would hand back null and the
+                // next redraw would throw on a pooled enemy's second life.
+                _fill = existing.Find("FillHolder/Fill");
                 return;
             }
 
             _root = new GameObject(RootName).transform;
             _root.SetParent(transform, false);
 
-            var backdrop = Quad("Backdrop", _root, tuning.healthBarBackdropMaterial);
+            var backdrop = Slab("Backdrop", _root, tuning.healthBarBackdropMaterial);
             backdrop.localScale = new Vector3(
-                tuning.healthBarWidth * 1.10f, tuning.healthBarHeight * 1.35f, 1f);
+                tuning.healthBarWidth * 1.10f, tuning.healthBarHeight * 1.35f, Thickness);
 
-            // The fill is a child of a holder scaled to the bar's real size, so the fill's own
+            // The fill hangs off a holder scaled to the bar's real size, so the fill's own
             // localScale.x can be the health fraction and nothing else - which is the only reason
-            // Redraw is two lines instead of six.
+            // Redraw is two lines rather than six.
             var holder = new GameObject("FillHolder").transform;
             holder.SetParent(_root, false);
             holder.localScale = new Vector3(tuning.healthBarWidth, tuning.healthBarHeight, 1f);
 
-            _fill = Quad("Fill", holder, tuning.healthBarFillMaterial);
-            _fill.localScale = Vector3.one;
+            _fill = Slab("Fill", holder, tuning.healthBarFillMaterial);
+            _fill.localScale = new Vector3(1f, 1f, Thickness);
         }
 
-        static Transform Quad(string name, Transform parent, Material material)
+        static Transform Slab(string name, Transform parent, Material material)
         {
-            var quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
-            quad.name = name;
-            quad.transform.SetParent(parent, false);
-            // Unity's quad faces +Z, and the root's +Z points away from the camera. Without this
-            // the bar is drawn facing into the world and backface culling makes it invisible -
-            // which looks exactly like a bar that was never created.
-            quad.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
+            var slab = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            slab.name = name;
+            slab.transform.SetParent(parent, false);
 
-            var collider = quad.GetComponent<Collider>();
+            var collider = slab.GetComponent<Collider>();
             if (Application.isPlaying)
             {
                 Destroy(collider);
@@ -177,12 +193,12 @@ namespace Graft.Game
                 DestroyImmediate(collider);
             }
 
-            var renderer = quad.GetComponent<MeshRenderer>();
+            var renderer = slab.GetComponent<MeshRenderer>();
             renderer.sharedMaterial = material;
             renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             renderer.receiveShadows = false;
 
-            return quad.transform;
+            return slab.transform;
         }
     }
 }

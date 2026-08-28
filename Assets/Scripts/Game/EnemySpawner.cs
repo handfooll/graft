@@ -193,11 +193,31 @@ namespace Graft.Game
             return agent;
         }
 
-        /// <summary>Hands a retired enemy back to the pool. Called by the tour when it clears up.</summary>
-        public void Reclaim(EnemyAgent agent)
+        /// <summary>
+        /// Takes everything off the field at once and puts it back in the pool.
+        ///
+        /// The screenshot tour poses each gate image in a scene it does not reload between them, so
+        /// without this every capture would inherit the fight staged for the one before it.
+        /// </summary>
+        public void ClearField()
         {
-            if (agent != null)
+            if (registry == null)
             {
+                return;
+            }
+
+            var live = registry.Live;
+            for (var i = live.Count - 1; i >= 0; i--)
+            {
+                var agent = live[i];
+                if (agent == null)
+                {
+                    continue;
+                }
+
+                // Retire unregisters, so the list this is walking shrinks as it goes - which is
+                // why it is walked backwards.
+                agent.Retire();
                 _idle.Push(agent);
             }
         }
