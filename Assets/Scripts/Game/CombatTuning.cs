@@ -15,7 +15,12 @@ namespace Graft.Game
     public class CombatTuning : ScriptableObject
     {
         [Header("The player")]
-        [Range(20f, 500f)] public float playerMaxHealth = 100f;
+        [Tooltip("Raised from a placeholder 100 once the enemy numbers existed to check it " +
+                 "against: half an Ember Scar swarm killed a healthy player in well under a " +
+                 "second, which is not a fight you disengage from. At 225 the same swarm takes " +
+                 "about three seconds - long enough to notice it, turn, and get out of contact - " +
+                 "and the heaviest hit in the game at that depth costs about a sixth of it.")]
+        [Range(20f, 500f)] public float playerMaxHealth = 225f;
 
         [Tooltip("Metres. About two thirds of the visible width, so a target is on screen well " +
                  "before it is shootable and you get the choice of engaging or walking on.")]
@@ -67,6 +72,13 @@ namespace Graft.Game
 
         public Color healthBarFill = new Color(0.94f, 0.30f, 0.26f);
         public Color healthBarBackdrop = new Color(0.06f, 0.06f, 0.07f, 1f);
+
+        [Tooltip("On: every living enemy carries a bar. Off: a bar appears only once something " +
+                 "has been hit. On is the default because a fight you cannot read is not a fight " +
+                 "you can tune - and because Phase 3's gate asks for bars to be visible in it. " +
+                 "Turning it off is the tidier screen and is one field away if the ten bars of an " +
+                 "Ember Scar swarm turn out to be noise.")]
+        public bool healthBarsAlwaysVisible = true;
 
         [Header("Materials")]
         [Tooltip("Filled in by ProjectSetup from MaterialLibrary - referenced from the asset so an " +

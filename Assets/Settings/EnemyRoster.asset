@@ -1,0 +1,71 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 02b1868382435465dbcfc66488d4241f, type: 3}
+  m_Name: EnemyRoster
+  m_EditorClassIdentifier: Graft.Game::Graft.Game.EnemyRoster
+  families:
+  - family: 0
+    displayName: Chitter
+    maxHealth: 22
+    moveSpeed: 4.2
+    damage: 4
+    attackInterval: 0.9
+    attackRange: 1.5
+    height: 0.85
+    width: 0.95
+    body: {r: 0.42, g: 0.78, b: 0.24, a: 1}
+    accent: {r: 0.83, g: 0.96, b: 0.32, a: 1}
+    accentEmissive: 0
+    bodyMaterial: {fileID: 2100000, guid: 64a0be60d6d944688934ca6a7694a09c, type: 2}
+    accentMaterial: {fileID: 2100000, guid: 9ec58054728004caca96e24e63be2feb, type: 2}
+  - family: 1
+    displayName: Breaker
+    maxHealth: 55
+    moveSpeed: 2.6
+    damage: 16
+    attackInterval: 1.8
+    attackRange: 2
+    height: 1.65
+    width: 1.3
+    body: {r: 0.78, g: 0.26, b: 0.14, a: 1}
+    accent: {r: 1, g: 0.63, b: 0.2, a: 1}
+    accentEmissive: 0
+    bodyMaterial: {fileID: 2100000, guid: 2d021f5c1fa514b63908d1d2ca05d0eb, type: 2}
+    accentMaterial: {fileID: 2100000, guid: 591cd46fa810b40649916a1f02206f05, type: 2}
+  - family: 2
+    displayName: Shellback
+    maxHealth: 95
+    moveSpeed: 2.2
+    damage: 8
+    attackInterval: 1.4
+    attackRange: 1.8
+    height: 1.2
+    width: 1.55
+    body: {r: 0.7, g: 0.62, b: 0.47, a: 1}
+    accent: {r: 0.31, g: 0.26, b: 0.21, a: 1}
+    accentEmissive: 0
+    bodyMaterial: {fileID: 2100000, guid: 02911b0cd221f482ea7173dc63871c6c, type: 2}
+    accentMaterial: {fileID: 2100000, guid: f7209510039074339a0850eb1d7f2813, type: 2}
+  - family: 3
+    displayName: Lantern
+    maxHealth: 30
+    moveSpeed: 3.4
+    damage: 7
+    attackInterval: 1.35
+    attackRange: 6
+    height: 1.75
+    width: 0.7
+    body: {r: 0.4, g: 0.35, b: 0.72, a: 1}
+    accent: {r: 0.36, g: 0.92, b: 1, a: 1}
+    accentEmissive: 1
+    bodyMaterial: {fileID: 2100000, guid: fc48ab0d848bc457eaf0278b27fac187, type: 2}
+    accentMaterial: {fileID: 2100000, guid: a32da5bf2d8bf41c5944746abbbdb3a0, type: 2}

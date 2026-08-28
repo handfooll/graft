@@ -29,16 +29,22 @@ namespace Graft.Editor
         [MenuItem("GRAFT/Rebuild World Scene")]
         static void BuildFromMenu() =>
             Build(ProjectSetup.EnsureCameraFraming(), ProjectSetup.EnsureMovementTuning(),
-                ProjectSetup.EnsureCharacterProportions(), ProjectSetup.EnsureWorldLayout());
+                ProjectSetup.EnsureCharacterProportions(), ProjectSetup.EnsureWorldLayout(),
+                ProjectSetup.EnsureCombatTuning(), ProjectSetup.EnsureEnemyRoster(),
+                ProjectSetup.EnsureSpawnTables());
 
         public static void Build(CameraFraming framing, MovementTuning tuning, CharacterProportions shape,
-            WorldLayout layout)
+            WorldLayout layout, CombatTuning combat, EnemyRoster roster, SpawnTables tables)
         {
             var scene = EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
 
             var world = WorldBuilder.Build(layout);
-            var player = BuildPlayer(tuning, shape, world.GetComponent<WorldRegions>());
+            var regions = world.GetComponent<WorldRegions>();
+            var player = BuildPlayer(tuning, shape, regions);
             HudBuilder.Build(player.GetComponent<VirtualStickInput>());
+            // After the player and the world, because every combat component needs one or the
+            // other - and before the camera, so the very first frame already has a target.
+            CombatBuilder.Build(player, regions, combat, roster, tables);
             ConfigureLight();
             ConfigureCamera(framing, player.transform);
 

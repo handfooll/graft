@@ -1,0 +1,36 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9f2c511d81a29433494d1455bcac0be7, type: 3}
+  m_Name: CombatTuning
+  m_EditorClassIdentifier: Graft.Game::Graft.Game.CombatTuning
+  playerMaxHealth: 225
+  attackRange: 6.5
+  attackInterval: 0.45
+  attackDamage: 12
+  baseHealSeconds: 4
+  projectileSpeed: 30
+  projectileRadius: 0.22
+  enemyProjectileSpeed: 14
+  hitFlashSeconds: 0.09
+  deathSeconds: 0.35
+  impactBurstRadius: 1.1
+  healthBarWidth: 1.15
+  healthBarHeight: 0.15
+  healthBarLift: 0.34
+  healthBarFill: {r: 0.94, g: 0.3, b: 0.26, a: 1}
+  healthBarBackdrop: {r: 0.06, g: 0.06, b: 0.07, a: 1}
+  healthBarsAlwaysVisible: 1
+  playerProjectileMaterial: {fileID: 2100000, guid: 486a4221e9112429a9fcef5659266b65, type: 2}
+  enemyProjectileMaterial: {fileID: 2100000, guid: 620ef71aca65e460e879de20a3146bf7, type: 2}
+  hitFlashMaterial: {fileID: 2100000, guid: b6a6d9675e6404d6a978eff99ec360cd, type: 2}
+  healthBarFillMaterial: {fileID: 2100000, guid: f57c48146290242aca5af1e30a04265a, type: 2}
+  healthBarBackdropMaterial: {fileID: 2100000, guid: 86f8c43aeb5d94461afd9ae1433f71b5, type: 2}

@@ -24,6 +24,9 @@ namespace Graft.Editor
         public const string CameraFramingPath = "Assets/Settings/CameraFraming.asset";
         public const string MovementTuningPath = "Assets/Settings/MovementTuning.asset";
         public const string CharacterProportionsPath = "Assets/Settings/CharacterProportions.asset";
+        public const string CombatTuningPath = "Assets/Settings/CombatTuning.asset";
+        public const string EnemyRosterPath = "Assets/Settings/EnemyRoster.asset";
+        public const string SpawnTablesPath = "Assets/Settings/SpawnTables.asset";
         /// <summary>
         /// **Which world gets built.** One line to switch, then re-run <see cref="ConfigureAll"/> -
         /// both layouts are kept as assets precisely so the two can be compared on a device instead
@@ -46,8 +49,17 @@ namespace Graft.Editor
             EnsureWorldLayout(WorldShape.Corridor);
             EnsureWorldLayout(WorldShape.Cluster);
             var layout = EnsureWorldLayout();
+            var combat = EnsureCombatTuning();
+            var roster = EnsureEnemyRoster();
+            var tables = EnsureSpawnTables();
             RenderPipelineSetup.Configure(framing);
-            BootstrapSceneBuilder.Build(framing, movement, shape, layout);
+            // Before the scene build and saved immediately, or the .mat files never reach disk and
+            // every reference to them serialises as null without a word of complaint. See the note
+            // on CombatBuilder.ApplyMaterials.
+            CombatBuilder.ApplyMaterials(combat, roster);
+            AssetDatabase.SaveAssets();
+            BootstrapSceneBuilder.Build(framing, movement, shape, layout, combat, roster, tables);
+            CombatBuilder.WarnOnSuspectTuning(combat, roster, movement, framing);
             SwitchToiOS();
             AssetDatabase.SaveAssets();
             Debug.Log($"[GRAFT] ProjectSetup.ConfigureAll complete. Active build target: {EditorUserBuildSettings.activeBuildTarget}, colour space: {PlayerSettings.colorSpace}.");
@@ -79,6 +91,47 @@ namespace Graft.Editor
             EnsureAsset<CharacterProportions>(CharacterProportionsPath);
 
         /// <summary>
+        /// How fighting feels and how it reads. Created at its defaults if missing.
+        /// </summary>
+        public static CombatTuning EnsureCombatTuning() => EnsureAsset<CombatTuning>(CombatTuningPath);
+
+        /// <summary>
+        /// The four enemy families. Like <see cref="EnsureWorldLayout"/>, the defaults here are a
+        /// design decision rather than a starting point - DESIGN.md §5 fixes the set at four - so
+        /// they are stamped on explicitly at creation rather than left to field initialisers.
+        ///
+        /// **Changing the numbers in code does not change an asset that already exists.** A
+        /// ScriptableObject's defaults apply exactly once, when the file is created (GOTCHAS.md).
+        /// To pick up an edit to <c>EnemyRoster.DefaultFamilies</c>, delete the asset and re-run:
+        /// <code>rm -f Assets/Settings/EnemyRoster.asset*</code>
+        /// </summary>
+        public static EnemyRoster EnsureEnemyRoster()
+        {
+            var created = EnsureAsset<EnemyRoster>(EnemyRosterPath, out var isNew);
+            if (isNew)
+            {
+                created.ApplyDefaults();
+            }
+
+            return created;
+        }
+
+        /// <summary>
+        /// What each area sends at you. Same defaults-apply-once trap as
+        /// <see cref="EnsureEnemyRoster"/>; same answer.
+        /// </summary>
+        public static SpawnTables EnsureSpawnTables()
+        {
+            var created = EnsureAsset<SpawnTables>(SpawnTablesPath, out var isNew);
+            if (isNew)
+            {
+                created.ApplyDefaults();
+            }
+
+            return created;
+        }
+
+        /// <summary>
         /// The layout the scene is built from. Its defaults *are* the world - the shape of it, the
         /// borders and the palettes - so this is the one asset whose defaults are a design decision
         /// rather than a starting point.
@@ -108,11 +161,15 @@ namespace Graft.Editor
             return created;
         }
 
-        static T EnsureAsset<T>(string path) where T : ScriptableObject
+        static T EnsureAsset<T>(string path) where T : ScriptableObject =>
+            EnsureAsset<T>(path, out _);
+
+        static T EnsureAsset<T>(string path, out bool isNew) where T : ScriptableObject
         {
             var existing = AssetDatabase.LoadAssetAtPath<T>(path);
             if (existing != null)
             {
+                isNew = false;
                 return existing;
             }
 
@@ -120,6 +177,7 @@ namespace Graft.Editor
             var created = ScriptableObject.CreateInstance<T>();
             AssetDatabase.CreateAsset(created, path);
             Debug.Log($"[GRAFT] Created {path} at defaults.");
+            isNew = true;
             return created;
         }
 
