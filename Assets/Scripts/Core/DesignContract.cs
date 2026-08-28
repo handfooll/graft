@@ -15,6 +15,12 @@ namespace Graft.Core
         /// <summary>Head, Core, LeftArm, RightArm, Legs (§5).</summary>
         public const int BodySlotCount = 5;
 
+        /// <summary>venom / impact / hide / spark (§5) - the "what the ability does" axis.</summary>
+        public const int EnemyFamilyCount = 4;
+
+        /// <summary>Base is the safe hub: no enemies ever spawn there (§7). Enforced in SpawnDirector.</summary>
+        public const bool BaseIsSafe = true;
+
         /// <summary>Corruption fraction past which the player burns their own health (§6).</summary>
         public const float SelfDamageThreshold = 0.85f;
 
