@@ -66,9 +66,25 @@ namespace Graft.Game
             return true;
         }
 
-        /// <summary>Where banking happens and where death respawns you (§3). Phase 4 uses this.</summary>
+        /// <summary>
+        /// The **outer** ring: safe ground. No enemies spawn here and the player heals (§7). It is
+        /// deliberately *not* where banking happens - see <see cref="IsInBankPlaza"/>.
+        /// </summary>
         public bool IsInBase(Vector3 position) =>
             TryAreaAt(position, out var area) && area == Area.Base;
+
+        /// <summary>
+        /// The **inner** ring: the 7 m plaza at the monument, where cargo is banked (D-P4.2).
+        ///
+        /// Asked of the map rather than of a trigger volume in the scene, so the answer cannot
+        /// disagree with the paving the player is standing on - the same reason area lookup shares
+        /// the map with the thing that built the ground.
+        /// </summary>
+        public bool IsInBankPlaza(Vector3 position) =>
+            Map != null && Map.IsInBankPlaza(new Vec2(position.x, position.z));
+
+        /// <summary>Radius of the bank plaza, for anything that has to draw it.</summary>
+        public float BankRadius => Map != null ? Map.BankRadius : 0f;
 
         /// <summary>Metres back to Base along the spine - the cost of the walk home.</summary>
         public float DistanceFromBase(Vector3 position) =>

@@ -4,22 +4,28 @@ using UnityEngine;
 namespace Graft.Game
 {
     /// <summary>
-    /// The player's health, and what closes the loop around it in Phase 3.
+    /// The player's health, and the death rule.
     ///
-    /// **This is deliberately not the death rule.** DESIGN.md §3 and BUILD_PLAN.md Phase 4 own what
-    /// dying costs - unbanked cargo - and there is no cargo yet, so there is nothing to lose. What
-    /// Phase 3 needs is only that the fight has stakes and does not end in a permanent standstill:
-    /// enemies can hurt you, walking back to Base makes you whole, and reaching zero puts you back
-    /// at Base rather than leaving a corpse standing in Ember Scar.
+    /// Phase 3 left <see cref="Fall"/> as a stand-in - back to Base, whole, nothing lost, because
+    /// there was nothing yet to lose - and said Phase 4 would replace it. This is that replacement,
+    /// and the seam held: it is one method, and combat did not have to be reopened to change it.
     ///
-    /// Phase 4 replaces <see cref="Fall"/> with the real thing. The seam is here on purpose, so
-    /// that arrives as a change to one method rather than as combat needing to be reopened.
+    /// The rule is D4 read literally. **All** unbanked cargo, and nothing else, ever. Its "only"
+    /// limits which categories are at risk, not what fraction of them - and keeping some fraction
+    /// back would blunt exactly the thing DESIGN.md §3 calls the whole game. There is no corpse run
+    /// and no recovery: not because either is forbidden, but because Phase 4 exists to measure
+    /// whether the walk home is a commitment, and a recovery mechanic dulls the signal while the
+    /// measurement is being taken. It is additive later, and it is the **first lever** if the death
+    /// cost turns out to be too harsh - before cargo capacity or essence value, which the depth
+    /// gradient leans on.
     /// </summary>
     [RequireComponent(typeof(Damageable))]
     public class PlayerVitals : MonoBehaviour
     {
         [SerializeField] CombatTuning tuning;
         [SerializeField] WorldRegions regions;
+        [SerializeField] PlayerCargo cargo;
+        [SerializeField] BankZone bank;
 
         Damageable _health;
         HealthBar _bar;
@@ -27,11 +33,16 @@ namespace Graft.Game
 
         public CombatTuning Tuning { get => tuning; set => tuning = value; }
         public WorldRegions Regions { get => regions; set => regions = value; }
+        public PlayerCargo Cargo { get => cargo; set => cargo = value; }
+        public BankZone Bank { get => bank; set => bank = value; }
 
         public Damageable Health => _health;
 
         /// <summary>How many times the player has been put back at Base. Read by the tour.</summary>
         public int Falls { get; private set; }
+
+        /// <summary>Value of the cargo the last death cost. Zero if nothing was being carried.</summary>
+        public float LastLoss { get; private set; }
 
         void Awake()
         {
@@ -80,12 +91,26 @@ namespace Graft.Game
         void OnDied(Damageable damageable) => Fall();
 
         /// <summary>
-        /// Phase 3's stand-in for death: back to Base, whole again, nothing lost - because there is
-        /// nothing yet to lose. Phase 4 makes this cost the unbanked cargo (§3).
+        /// Death out in the world: lose every unbanked unit, respawn at Base, keep everything that
+        /// was already banked (D4, §3).
+        ///
+        /// The order matters. The cargo is lost **before** the teleport, so the loss is recorded
+        /// against where the player actually died rather than against Base - and so that the ledger
+        /// is already empty by the time <see cref="BankZone"/> sees the player arrive on the plaza.
+        /// Then the bank zone is resynced, because being carried home dead is not banking: without
+        /// that line, dying would fire the event Phase 5 clears grafts and resets corruption on,
+        /// which is a different rule from the one §3 draws.
         /// </summary>
         void Fall()
         {
             Falls++;
+            LastLoss = 0f;
+
+            var ledger = cargo != null ? cargo.Ledger : null;
+            if (ledger != null)
+            {
+                LastLoss = ledger.LoseCarried();
+            }
 
             var home = regions != null ? regions.AnchorFor(Area.Base) : Vector3.zero;
             if (_controller != null)
@@ -98,7 +123,15 @@ namespace Graft.Game
             }
 
             _health.ResetTo(tuning != null ? tuning.playerMaxHealth : 100f);
-            Debug.Log("[GRAFT] Player fell and was returned to Base. Phase 4 makes this cost cargo.");
+
+            if (bank != null)
+            {
+                bank.Resync();
+            }
+
+            var banked = ledger != null ? ledger.BankedTotal : 0f;
+            Debug.Log($"[GRAFT] Player died carrying {LastLoss:0.#} in essence - all of it lost. " +
+                      $"Banked total is untouched at {banked:0.#}.");
         }
 
         /// <summary>

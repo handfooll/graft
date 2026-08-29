@@ -199,3 +199,58 @@ runs **without** `-nographics`.
 Build `ExtractionLedger` and its tests before anything touches a MonoBehaviour. Every decision above
 is expressible as arithmetic on that one type, and if the arithmetic is wrong no amount of HUD makes
 the loop read.
+
+---
+
+## 7. Addendum - written during the build, 2026-08-30
+
+Everything above was agreed before any code existed. Two things in it turned out not to survive
+contact with the numbers, and both are recorded here rather than quietly edited away, because a spec
+that has been silently rewritten to match what got built is not a spec.
+
+### §5 assertion 6 was wrong, and could not be satisfied
+
+> *"Kills to fill an empty bar lands in **35–45** for every biome."*
+
+This cannot be true at the same time as D-P4.4's ~150 s, at any tuning. Measured from the shipped
+assets, the sustained kill rate per biome is Verge 0.53/s, Rust Flats 0.45, Glass Mire 0.52, Bone
+Reach 0.17, Ember Scar 0.23 - a factor of three across the world, because a Bone Reach Shellback has
+nine times a Verge Chitter's effective health. A flat 40 kills therefore means fill times of 76–239 s;
+a flat 150 s means 25–79 kills. The two numbers in D-P4.4 were only ever consistent with each other
+at depth, where the spec's arithmetic was evidently done.
+
+**The fill time was kept and the kill count dropped**, because D-P4.4's stated reasoning is that fill
+time is the invariant and Phase 5's corruption ladder depends on it. What makes it hold is
+`EssenceRules`: a mote's cargo cost is proportional to the **effective health of the enemy that
+dropped it**, so effective health cancels out of (kills per second × cargo per kill) and the bar
+fills at a rate set by the player's damage output and nothing else. That is *depth changes payout,
+not fill rate* as an identity rather than as a tuning aspiration.
+
+Kills-to-fill is now derived rather than designed, and falls with depth because deep enemies pay
+more each: **Verge 125, Rust Flats 68, Glass Mire 69, Bone Reach 24, Ember Scar 33.** The spec's
+"about 40 kills" is right in the two deepest biomes and wrong everywhere else.
+
+Measured fill times, printed by `ConfigureAll` and asserted in `ExtractionAssetTests`:
+
+| | Verge | Rust Flats | Glass Mire | Bone Reach | Ember Scar |
+|---|---|---|---|---|---|
+| Seconds to fill | 150 | 149 | 134 | 145 | 144 |
+
+### One Phase 3 tuning value had to move
+
+The Verge was the only biome in the game that could not send enemies as fast as the player killed
+them - 0.53 kills/s against a capability of 0.84 - so the player stood waiting for a third of every
+expedition and the tutorial biome took **238 s** to fill a bar against everyone else's ~145. Invisible
+before cargo existed to measure it against.
+
+`SpawnTables` Verge `secondsBetweenSpawns` is now **1.15 s**, down from 1.9. Danger barely moves: four
+Chitters at ×1.00 still need twelve seconds to empty a 225-health player, and the Verge remains the
+gentlest biome by a factor of 2.5 on incoming damage. It is one field to revert; the cost of
+reverting is that the Verge's expedition goes back to being 60% longer than everywhere else.
+
+A consequence worth knowing: this makes the Verge's *pacing* faster than Rust Flats', which broke
+`CombatAssetTests.DistanceFromBaseIsTheDifficultyDial`. That test asserted each of the three spawn
+dials was independently monotonic with depth, which is a proxy rather than the thing meant - a
+spawn interval is not a difficulty measure on its own. It now asserts population cap and stat
+multiplier as before, and the composite (`AreaExpedition.IncomingDamagePerSecond`: 23 / 59 / 59 /
+112 / 151 dps) in `TheDeeperBiomesPressWithMoreForce`.

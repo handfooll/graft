@@ -27,6 +27,7 @@ namespace Graft.Editor
         public const string CombatTuningPath = "Assets/Settings/CombatTuning.asset";
         public const string EnemyRosterPath = "Assets/Settings/EnemyRoster.asset";
         public const string SpawnTablesPath = "Assets/Settings/SpawnTables.asset";
+        public const string EssenceTuningPath = "Assets/Settings/EssenceTuning.asset";
         /// <summary>
         /// **Which world gets built.** One line to switch, then re-run <see cref="ConfigureAll"/> -
         /// both layouts are kept as assets precisely so the two can be compared on a device instead
@@ -52,14 +53,21 @@ namespace Graft.Editor
             var combat = EnsureCombatTuning();
             var roster = EnsureEnemyRoster();
             var tables = EnsureSpawnTables();
+            var essence = EnsureEssenceTuning();
             RenderPipelineSetup.Configure(framing);
             // Before the scene build and saved immediately, or the .mat files never reach disk and
             // every reference to them serialises as null without a word of complaint. See the note
             // on CombatBuilder.ApplyMaterials.
-            CombatBuilder.ApplyMaterials(combat, roster);
+            CombatBuilder.ApplyMaterials(combat, roster, essence);
             AssetDatabase.SaveAssets();
-            BootstrapSceneBuilder.Build(framing, movement, shape, layout, combat, roster, tables);
-            CombatBuilder.WarnOnSuspectTuning(combat, roster, movement, framing);
+            // **Before the scene build, not after.** EditorSceneManager.NewScene(Single) destroys
+            // the loaded ScriptableObject instances, so every one of these locals comes back from
+            // the build as a destroyed Unity object - which compares equal to null and makes the
+            // check quietly do nothing. It sat after the build from Phase 3 until 2026-08-30 and
+            // had therefore never once run: a diagnostic reporting a clean bill of health because
+            // it could not see anything at all. See GOTCHAS.md.
+            CombatBuilder.WarnOnSuspectTuning(combat, roster, movement, framing, essence, tables);
+            BootstrapSceneBuilder.Build(framing, movement, shape, layout, combat, roster, tables, essence);
             SwitchToiOS();
             AssetDatabase.SaveAssets();
             Debug.Log($"[GRAFT] ProjectSetup.ConfigureAll complete. Active build target: {EditorUserBuildSettings.activeBuildTarget}, colour space: {PlayerSettings.colorSpace}.");
@@ -130,6 +138,16 @@ namespace Graft.Editor
 
             return created;
         }
+
+        /// <summary>
+        /// The extraction loop's numbers. Created at its defaults if missing.
+        ///
+        /// Its capacity is derived from <see cref="CombatTuning"/>'s damage output rather than
+        /// chosen, so an edit to the fight silently retunes how long an expedition takes. That is
+        /// what <c>ExtractionRulesTests</c> is for, and what <c>CombatBuilder.WarnOnSuspectTuning</c>
+        /// says out loud in this method's own log.
+        /// </summary>
+        public static EssenceTuning EnsureEssenceTuning() => EnsureAsset<EssenceTuning>(EssenceTuningPath);
 
         /// <summary>
         /// The layout the scene is built from. Its defaults *are* the world - the shape of it, the

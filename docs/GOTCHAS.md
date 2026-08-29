@@ -112,6 +112,27 @@ Add to this file whenever something costs more than about twenty minutes to diag
   This hid for a whole phase because the world's materials were all already on disk from the run
   that first made them, so `GetOrCreate` never took the create path again.
 
+- **`EditorSceneManager.NewScene(..., Single)` destroys every loaded ScriptableObject, so a local
+  variable holding one becomes a "fake null" the moment a scene is built.** A `WorldLayout` or
+  `CombatTuning` loaded before the build is a *destroyed* Unity object afterwards: it is not `null`
+  in the CLR sense, but `== null` is true, because `UnityEngine.Object` overloads the operator to
+  say so. Anything of the form
+
+  ```csharp
+  BootstrapSceneBuilder.Build(...);
+  Validate(combatTuning, roster);     // every argument is now "null"
+  ```
+
+  therefore runs its guard clauses and returns having checked nothing.
+
+  `CombatBuilder.WarnOnSuspectTuning` sat in exactly that position from Phase 3 until 2026-08-30
+  and had consequently **never once run** - a diagnostic reporting a clean bill of health because
+  it could not see anything at all, which is the worst possible failure for a diagnostic. Found
+  only because Phase 4 added a check to it that was *expected* to print something and did not.
+
+  Do validation **before** the scene build, or re-load the assets through `AssetDatabase` after it.
+  And never let a null guard in a diagnostic return silently: say what was missing.
+
 ## Primitives
 
 - **A `Quad` is one-sided and it is culled from behind.** Whether a camera-facing quad is visible
@@ -161,6 +182,23 @@ Add to this file whenever something costs more than about twenty minutes to diag
   avoid leaking, and that flag is exactly what stops serialisation - so the editor builds the
   `Image` components and the component assigns their sprites in `Awake`. An `Image` with no sprite
   is invisible, which reads as "the code is broken" rather than "the asset is missing".
+- **Under `ConstantPhysicalSize`, `CanvasScaler.physicalUnit` IS the canvas unit - `defaultSpriteDPI`
+  is not.** With `Centimeters` a phone canvas is about **six units across**, so a panel authored at
+  a plausible-looking 52 units tall with 10-unit margins comes out at *negative* width and renders
+  nothing at all. Nothing throws; the canvas is fine, the components tick, the screen is just empty.
+  `defaultSpriteDPI` only feeds `referencePixelsPerUnit`, which affects how sprites map - it does
+  not make a unit 1/96 inch, whatever a comment may claim.
+
+  Use **`Points`** (1 unit = 1/72 inch, ~180 across a phone). Centimetres additionally cannot
+  express type at all, because `Text.fontSize` is an integer and readable type is a third of a
+  centimetre.
+
+  Phase 1 shipped `Centimeters` and never noticed, because the only thing on the canvas was the
+  floating stick - and the stick converts screen pixels through `canvas.scaleFactor` at runtime, so
+  it is immune to the unit being wrong. **An empty container hides this bug perfectly.** Phase 4's
+  cargo bar was the first thing authored in canvas units and it was invisible in all 21 gate
+  captures; every assertion still passed, because none of them measured a RectTransform. The one
+  that does now is `ExtractionPlayTests.TheCargoBarOccupiesRealSpaceOnTheScreen`.
 
 ## URP
 

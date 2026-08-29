@@ -125,6 +125,24 @@ namespace Graft.Core
             ? Path.Start
             : _spec.AreaDiscs[Areas.DistanceRank(Area.Base)].Centre;
 
+        /// <summary>Radius of the safe disc. Nothing spawns inside it and the player heals (§7).</summary>
+        public float BaseRadius => _spec.BaseRadius;
+
+        /// <summary>
+        /// Radius of the inner plaza where banking happens. Always inside <see cref="BaseRadius"/>,
+        /// clamped here rather than trusted, because a bank ring larger than the safe ring would
+        /// bank the player from ground that is not Base - which is the accidental banking the two
+        /// rings exist to prevent, arriving by a different door.
+        /// </summary>
+        public float BankRadius => MathF.Min(_spec.BankRadius, _spec.BaseRadius);
+
+        /// <summary>
+        /// Standing on the bank plaza. Measured from <see cref="BaseCentre"/> as a plain circle,
+        /// not off the tile grid: the plaza is 7 m across and a 4 m tile cannot describe it, and
+        /// unlike a biome border this is a place with a hard edge that the player learns.
+        /// </summary>
+        public bool IsInBankPlaza(Vec2 point) => (point - BaseCentre).Magnitude <= BankRadius;
+
         public int Columns { get; }
         public int Rows { get; }
 

@@ -67,6 +67,24 @@ namespace Graft.Editor
                     i % 7 == 0 ? accent : shade, collide: false);
             }
 
+            // The **bank plaza**: the inner of Base's two rings (D-P4.2). Crossing this line banks
+            // the cargo; the outer ring is only safe.
+            //
+            // It has to be a line you can see, because it is the only boundary in the game that
+            // does something the moment you cross it - and because the whole reason there are two
+            // rings is that a player fleeing home should be able to stop *outside* it and keep
+            // their expedition. A rule you can only discover by triggering it is not a retreat
+            // valve. Dashed, low and uncollidable, so it reads as painted ground, not a fence.
+            //
+            // **Essence gold, not Base's cyan.** Every other lit thing in the plaza is cyan, so a
+            // cyan ring reads as more of the same decoration rather than as the one line in the
+            // game that does something when you step over it. Gold is the colour of essence, of a
+            // full cargo bar and of the cue that points here - which makes this the place where the
+            // gold you are carrying turns into gold you have kept, said in the only language a
+            // top-down game has room for.
+            BankRing(root, layout.bankRadius,
+                MaterialLibrary.GetOrCreate("M_Base_BankRing", new Color(1.00f, 0.72f, 0.26f), true));
+
             foreach (var transform in root.GetComponentsInChildren<Transform>(true))
             {
                 transform.gameObject.isStatic = true;
@@ -74,6 +92,30 @@ namespace Graft.Editor
 
             monolith.name = MonolithName;
             return root;
+        }
+
+        /// <summary>
+        /// The dashed, lit ring marking where banking happens.
+        ///
+        /// The dash count is derived from the circumference rather than fixed, so changing
+        /// <c>bankRadius</c> moves the line without also changing how a dash looks - a fixed count
+        /// on a bigger circle stretches every segment and the ring stops reading as a marking.
+        /// </summary>
+        static void BankRing(GameObject parent, float radius, Material accent)
+        {
+            const float DashLength = 1.5f;
+            const float DashGap = 0.85f;
+
+            var circumference = 2f * Mathf.PI * Mathf.Max(0.5f, radius);
+            var count = Mathf.Max(8, Mathf.RoundToInt(circumference / (DashLength + DashGap)));
+
+            for (var i = 0; i < count; i++)
+            {
+                var angle = i / (float)count * 360f;
+                Block(parent, "Base_BankRing", Polar(angle, radius, 0.05f),
+                    Quaternion.Euler(0f, angle, 0f), new Vector3(DashLength, 0.1f, 0.34f),
+                    accent, collide: false);
+            }
         }
 
         static void Ring(GameObject parent, string name, int count, float radius, float startAngle,

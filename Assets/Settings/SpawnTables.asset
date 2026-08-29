@@ -29,7 +29,7 @@ MonoBehaviour:
   - area: 1
     displayName: The Verge
     populationCap: 4
-    secondsBetweenSpawns: 1.9
+    secondsBetweenSpawns: 1.15
     statMultiplier: 1
     venom: 0.7
     impact: 0.3

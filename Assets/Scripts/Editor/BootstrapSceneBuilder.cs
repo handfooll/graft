@@ -31,20 +31,24 @@ namespace Graft.Editor
             Build(ProjectSetup.EnsureCameraFraming(), ProjectSetup.EnsureMovementTuning(),
                 ProjectSetup.EnsureCharacterProportions(), ProjectSetup.EnsureWorldLayout(),
                 ProjectSetup.EnsureCombatTuning(), ProjectSetup.EnsureEnemyRoster(),
-                ProjectSetup.EnsureSpawnTables());
+                ProjectSetup.EnsureSpawnTables(), ProjectSetup.EnsureEssenceTuning());
 
         public static void Build(CameraFraming framing, MovementTuning tuning, CharacterProportions shape,
-            WorldLayout layout, CombatTuning combat, EnemyRoster roster, SpawnTables tables)
+            WorldLayout layout, CombatTuning combat, EnemyRoster roster, SpawnTables tables,
+            EssenceTuning essence)
         {
             var scene = EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
 
             var world = WorldBuilder.Build(layout);
             var regions = world.GetComponent<WorldRegions>();
             var player = BuildPlayer(tuning, shape, regions);
-            HudBuilder.Build(player.GetComponent<VirtualStickInput>());
             // After the player and the world, because every combat component needs one or the
             // other - and before the camera, so the very first frame already has a target.
-            CombatBuilder.Build(player, regions, combat, roster, tables);
+            CombatBuilder.Build(player, regions, combat, roster, tables, essence);
+            // After combat, not before: Phase 4's HUD draws the player's cargo ledger, and
+            // PlayerCargo is one of the components CombatBuilder adds. Wiring the HUD first would
+            // hand it a null and the bar would sit empty all game with nothing to report.
+            HudBuilder.Build(player.GetComponent<VirtualStickInput>(), player.GetComponent<PlayerCargo>());
             ConfigureLight();
             ConfigureCamera(framing, player.transform);
 

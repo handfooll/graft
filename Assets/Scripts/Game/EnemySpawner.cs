@@ -22,6 +22,7 @@ namespace Graft.Game
         [SerializeField] WorldRegions regions;
         [SerializeField] EnemyRegistry registry;
         [SerializeField] CombatEffects effects;
+        [SerializeField] EssenceField essence;
         [SerializeField] Transform player;
 
         /// <summary>
@@ -50,6 +51,7 @@ namespace Graft.Game
         public WorldRegions Regions { get => regions; set => regions = value; }
         public EnemyRegistry Registry { get => registry; set => registry = value; }
         public CombatEffects Effects { get => effects; set => effects = value; }
+        public EssenceField Essence { get => essence; set => essence = value; }
         public Transform Player { get => player; set => player = value; }
 
         /// <summary>The area the tables are currently being read for - the player's, not anyone else's.</summary>
@@ -123,7 +125,32 @@ namespace Graft.Game
 
             agent.Configure(profile, profile.Stats.Scaled(statMultiplier), tuning, effects, registry,
                 player, _playerHealth);
+            HangEssenceOnDeath(agent);
             return agent;
+        }
+
+        /// <summary>
+        /// Makes this enemy drop essence when it dies (Phase 4).
+        ///
+        /// Hung on <see cref="Damageable.Died"/>, which already fires exactly once and is already
+        /// guarded against a second shot arriving mid-collapse and killing the same thing twice -
+        /// so there is deliberately no second death path to keep in step with the first.
+        ///
+        /// **After <see cref="EnemyAgent.Configure"/>, never before.** Configure calls
+        /// <c>ClearListeners</c> on its way in, because these objects are pooled and the
+        /// subscriptions from a previous life are still attached; subscribing first would have this
+        /// handler wiped every time an enemy was recycled, and the essence would simply stop
+        /// dropping partway into a fight with nothing to show for it.
+        /// </summary>
+        void HangEssenceOnDeath(EnemyAgent agent)
+        {
+            if (essence == null)
+            {
+                return;
+            }
+
+            agent.Health.Died += _ => essence.Drop(
+                agent.Family, agent.transform.position, agent.Health.Pool.Maximum);
         }
 
         /// <summary>

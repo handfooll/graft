@@ -28,6 +28,19 @@ namespace Graft.Core
         /// <summary>Radius of the safe plaza at the start of the path.</summary>
         public float BaseRadius = 20f;
 
+        /// <summary>
+        /// Radius of the inner **bank plaza**, at the monument. Crossing into this is what banks
+        /// (Phase 4, D-P4.2); the rest of Base is safe but does nothing.
+        ///
+        /// Two rings rather than one because the cluster world makes the one-ring version actively
+        /// harmful: Base borders several biomes, so a route between two of them can cross the safe
+        /// disc, and an accidental bank ends an expedition the player was in the middle of. The
+        /// alternative - a button - spends a thumb D8 does not have spare and turns the payoff into
+        /// paperwork. Two rings gives a retreat valve that keeps your build *and* a bank that costs
+        /// no input.
+        /// </summary>
+        public float BankRadius = 7f;
+
         /// <summary>Half-width of the walkable corridor at Base, and at the far end. Corridor only.</summary>
         public float HalfWidthNear = 46f;
         public float HalfWidthFar = 74f;

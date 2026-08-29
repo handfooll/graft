@@ -39,6 +39,7 @@ sysinfo.txt
 /results.xml
 /tour.xml
 /sweep.xml
+/extraction.xml
 
 # Temp scene the PlayMode test runner leaves behind
 /Assets/InitTestScene*.unity

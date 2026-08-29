@@ -22,7 +22,7 @@ namespace Graft.Editor
         /// one of these needs one or the other.
         /// </summary>
         public static GameObject Build(GameObject player, WorldRegions regions, CombatTuning tuning,
-            EnemyRoster roster, SpawnTables tables)
+            EnemyRoster roster, SpawnTables tables, EssenceTuning essence)
         {
             // Note that the materials are NOT created here. They are made by ApplyMaterials before
             // the scene build starts - see the note on that method for why doing it from inside the
@@ -34,6 +34,33 @@ namespace Graft.Editor
             var effects = root.AddComponent<CombatEffects>();
             effects.Tuning = tuning;
 
+            // The player's half. A Damageable first: PlayerVitals requires it, and PlayerCombat's
+            // shots need something on the other side to hurt.
+            player.AddComponent<Damageable>();
+
+            // Cargo before anything that reads it. PlayerCargo owns the ExtractionLedger, and the
+            // magnet, the bank, the death rule and the HUD all reach for that one object.
+            var cargo = player.AddComponent<PlayerCargo>();
+            cargo.Tuning = essence;
+            cargo.Regions = regions;
+
+            var magnet = player.AddComponent<EssenceMagnet>();
+            magnet.Tuning = essence;
+
+            var field = root.AddComponent<EssenceField>();
+            field.Tuning = essence;
+            field.Regions = regions;
+            field.Magnet = magnet;
+
+            var bank = root.AddComponent<BankZone>();
+            bank.Regions = regions;
+            bank.Cargo = cargo;
+
+            var cue = player.AddComponent<HomeCue>();
+            cue.Tuning = essence;
+            cue.Regions = regions;
+            cue.Cargo = cargo;
+
             var spawner = root.AddComponent<EnemySpawner>();
             spawner.Tables = tables;
             spawner.Roster = roster;
@@ -41,15 +68,14 @@ namespace Graft.Editor
             spawner.Regions = regions;
             spawner.Registry = registry;
             spawner.Effects = effects;
+            spawner.Essence = field;
             spawner.Player = player.transform;
-
-            // The player's half. A Damageable first: PlayerVitals requires it, and PlayerCombat's
-            // shots need something on the other side to hurt.
-            player.AddComponent<Damageable>();
 
             var vitals = player.AddComponent<PlayerVitals>();
             vitals.Tuning = tuning;
             vitals.Regions = regions;
+            vitals.Cargo = cargo;
+            vitals.Bank = bank;
 
             var combat = player.AddComponent<PlayerCombat>();
             combat.Tuning = tuning;
@@ -79,8 +105,31 @@ namespace Graft.Editor
         /// 38-degree sun is the same colour as the thing shadowing it. Emission is the only
         /// property that survives all of that, which is the same reason Ember Scar's seams use it.
         /// </summary>
-        public static void ApplyMaterials(CombatTuning tuning, EnemyRoster roster)
+        public static void ApplyMaterials(CombatTuning tuning, EnemyRoster roster, EssenceTuning essence)
         {
+            if (essence != null)
+            {
+                // Essence gold, and nothing else in the game is this colour. It is the currency, so
+                // it wants its own hue - not the health bars' red, not Spark's cyan, not Ember
+                // Scar's orange ground.
+                essence.moteMaterial =
+                    MaterialLibrary.GetOrCreate("M_Essence", new Color(1.00f, 0.78f, 0.32f), true);
+
+                // What essence looks like when your hold is full: cold, and **not emissive**. The
+                // hue change alone would be a weak signal at 26 cm across; losing the glow is what
+                // makes a field of unclaimable motes read as switched off at a glance, in a still,
+                // on near-black Ember Scar ground.
+                essence.moteFullMaterial =
+                    MaterialLibrary.GetOrCreate("M_EssenceFull", new Color(0.42f, 0.46f, 0.55f));
+
+                // The way home is drawn in the same gold as the thing you are carrying, on purpose:
+                // the cue is not navigation, it is the cargo asking to be banked.
+                essence.homeCueMaterial =
+                    MaterialLibrary.GetOrCreate("M_HomeCue", new Color(1.00f, 0.72f, 0.26f), true);
+
+                UnityEditor.EditorUtility.SetDirty(essence);
+            }
+
             if (tuning != null)
             {
                 tuning.playerProjectileMaterial =
@@ -124,8 +173,10 @@ namespace Graft.Editor
         /// and a warning in that log is the shortest path between a mistake and noticing it.
         /// </summary>
         public static void WarnOnSuspectTuning(CombatTuning tuning, EnemyRoster roster,
-            MovementTuning movement, CameraFraming framing)
+            MovementTuning movement, CameraFraming framing, EssenceTuning essence, SpawnTables tables)
         {
+            WarnOnSuspectEssence(tuning, roster, essence, tables);
+
             if (tuning != null && framing != null)
             {
                 var fraction = tuning.RangeAsFractionOfScreen(framing);
@@ -153,6 +204,76 @@ namespace Graft.Editor
                         "a walk home you cannot outrun is not a decision.");
                 }
             }
+        }
+
+        /// <summary>
+        /// Checks the one Phase 4 number that no picture can show: how long a bar takes to fill.
+        ///
+        /// It is emergent from four assets tuned in three phases for three unrelated reasons - the
+        /// player's damage, the roster's health, the spawn pacing and the essence exchange rate -
+        /// so it drifts silently whenever any of them is touched. `ExtractionRulesTests` is what
+        /// actually holds the line; this is here because `ConfigureAll` is what someone runs after
+        /// changing a value, and a warning in that log is the shortest path to noticing.
+        /// </summary>
+        static void WarnOnSuspectEssence(CombatTuning tuning, EnemyRoster roster, EssenceTuning essence,
+            SpawnTables tables)
+        {
+            // Reported rather than returned on silently. This method is a diagnostic, and a
+            // diagnostic that quietly does nothing when it is handed a null is worse than no
+            // diagnostic at all - it looks exactly like a clean bill of health.
+            if (tuning == null || roster == null || essence == null || tables == null)
+            {
+                Debug.LogWarning(
+                    "[GRAFT] Expedition length could not be checked - missing " +
+                    $"{(tuning == null ? "CombatTuning " : "")}{(roster == null ? "EnemyRoster " : "")}" +
+                    $"{(essence == null ? "EssenceTuning " : "")}{(tables == null ? "SpawnTables " : "")}" +
+                    "asset. Run ProjectSetup.ConfigureAll.");
+                return;
+            }
+
+            if (!essence.CapacityIsWholeMotes)
+            {
+                Debug.LogWarning(
+                    $"[GRAFT] Cargo capacity {essence.cargoCapacity} is not a whole number of " +
+                    $"{essence.cargoPerMote}-unit motes. The bar will stop short of full forever, " +
+                    "and DESIGN.md §4's full-cargo prompt to head home can never fire.");
+            }
+
+            var model = new ExpeditionModel(tables.ToSpec(), family => roster.ProfileFor(family).Stats,
+                tuning.DamagePerSecond, essence.Rules, essence.cargoCapacity);
+
+            var report = new System.Text.StringBuilder(
+                $"[GRAFT] Expedition shape at {tuning.DamagePerSecond:0.#} player dps, " +
+                $"{essence.cargoCapacity:0} cargo capacity:\n");
+
+            foreach (var area in Areas.Biomes)
+            {
+                var run = model.For(area);
+                if (!run.SpawnsAnything)
+                {
+                    continue;
+                }
+
+                report.AppendLine(
+                    $"  {area,-10} {run.SecondsToFill,5:0} s to fill · {run.KillsToFill,4:0} kills · " +
+                    $"{run.AverageCargoPerKill,4:0.#} cargo/kill · " +
+                    $"{run.IncomingDamagePerSecond,4:0} incoming dps" +
+                    (run.SpawnLimited ? "  (SPAWN-LIMITED)" : string.Empty));
+
+                if (run.SecondsToFill < 110f || run.SecondsToFill > 195f)
+                {
+                    Debug.LogWarning(
+                        $"[GRAFT] {area} fills a cargo bar in {run.SecondsToFill:0} s, against the " +
+                        "~150 s the phase was specified at. The extraction decision is the product " +
+                        "and the player should meet it many times a session." +
+                        (run.SpawnLimited
+                            ? $" It is spawn-limited: {area} cannot send enemies as fast as the " +
+                              "player kills them, so the fix is its pacing, not the essence numbers."
+                            : string.Empty));
+                }
+            }
+
+            Debug.Log(report.ToString().TrimEnd());
         }
     }
 }

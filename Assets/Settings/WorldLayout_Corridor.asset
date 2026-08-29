@@ -49,6 +49,7 @@ MonoBehaviour:
   - 1
   tileSize: 4
   baseRadius: 20
+  bankRadius: 7
   halfWidthNear: 46
   halfWidthFar: 74
   edgeWaveAmplitude: 11

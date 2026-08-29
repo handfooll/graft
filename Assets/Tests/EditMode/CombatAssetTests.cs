@@ -205,6 +205,17 @@ namespace Graft.Tests
         {
             // DESIGN.md §7. Asserted as a shape rather than against absolute numbers, so retuning
             // the escalation is a value change and not a test rewrite.
+            //
+            // **Two of the three knobs, not all three.** This used to require the spawn interval to
+            // shorten with depth as well, and Phase 4 had to drop that: the Verge's pacing turned
+            // out to be set by a floor that has nothing to do with difficulty - below about one
+            // spawn every 1.2 s it cannot supply targets as fast as the player kills them, so the
+            // player stands waiting and the biome takes 60% longer to fill a cargo bar than any
+            // other. Speeding it up to fix that leaves it faster-paced than Rust Flats while
+            // remaining, by a factor of two and a half, the gentlest place in the game.
+            //
+            // Which is the real lesson: a spawn interval is not a difficulty measure on its own.
+            // The composite is asserted below, in TheDeeperBiomesArePressWithMoreForce.
             var tables = Tables();
 
             for (var i = 1; i < Areas.Biomes.Length; i++)
@@ -214,11 +225,55 @@ namespace Graft.Tests
 
                 Assert.GreaterOrEqual(further.populationCap, nearer.populationCap,
                     $"{further.displayName} sends no more than {nearer.displayName} despite being deeper.");
-                Assert.LessOrEqual(further.secondsBetweenSpawns, nearer.secondsBetweenSpawns,
-                    $"{further.displayName} sends them no faster than {nearer.displayName}.");
                 Assert.Greater(further.statMultiplier, nearer.statMultiplier,
                     $"{further.displayName} is no tougher than {nearer.displayName}.");
             }
+        }
+
+        [Test]
+        public void TheDeeperBiomesPressWithMoreForce()
+        {
+            // The composite difficulty dial: how much damage a standing player takes per second at
+            // each biome's steady population, which folds the cap, the family mix and the depth
+            // multiplier into the one number a player can actually feel.
+            //
+            // The step-to-step tolerance is 10%, and it is there for one honest reason: Glass Mire
+            // trades raw output for *range*. It is the first place that shoots back, which is a
+            // different kind of harder than Rust Flats' heavier hits, and raw damage per second
+            // understates it. A real inversion - a deep biome that is meaningfully softer than a
+            // shallow one - is still caught.
+            var roster = Roster();
+            var tuning = Tuning();
+            var model = new ExpeditionModel(Tables().ToSpec(), family => roster.ProfileFor(family).Stats,
+                tuning.DamagePerSecond, new EssenceRules(2f, 0.1f), 400f);
+
+            var previous = 0f;
+            var report = new System.Text.StringBuilder();
+
+            foreach (var area in Areas.Biomes)
+            {
+                var run = model.For(area);
+                report.AppendLine(
+                    $"  {area}: {run.IncomingDamagePerSecond:0} dps, " +
+                    $"{run.SecondsToKillAPlayer(tuning.playerMaxHealth):0.0} s to kill a full player");
+
+                Assert.Greater(run.IncomingDamagePerSecond, previous * 0.9f,
+                    $"{area} presses the player less hard than the biome before it, despite being " +
+                    $"deeper. DESIGN.md §7 makes distance from Base the difficulty dial.\n{report}");
+                previous = Mathf.Max(previous, run.IncomingDamagePerSecond);
+            }
+
+            var verge = model.For(Area.Verge);
+            var ember = model.For(Area.EmberScar);
+            Assert.Greater(ember.IncomingDamagePerSecond, verge.IncomingDamagePerSecond * 3f,
+                $"The deepest biome presses only " +
+                $"{ember.IncomingDamagePerSecond / verge.IncomingDamagePerSecond:0.0}x as hard as " +
+                $"the tutorial one. The gradient has flattened.\n{report}");
+
+            Assert.Greater(verge.SecondsToKillAPlayer(tuning.playerMaxHealth), 6f,
+                $"A player standing still in the Verge dies in " +
+                $"{verge.SecondsToKillAPlayer(tuning.playerMaxHealth):0.0} s. That is not a " +
+                $"tutorial biome.\n{report}");
         }
 
         [Test]

@@ -68,6 +68,13 @@ namespace Graft.Game
         [Range(8f, 60f)]
         public float baseRadius = 20f;
 
+        [Tooltip("Radius of the inner bank plaza at the monument. Crossing INTO this banks the " +
+                 "cargo (Phase 4); the rest of Base is a place to be safe and catch your breath " +
+                 "without ending the expedition. Must stay well inside baseRadius - one ring " +
+                 "banks the player by accident every time a route between two biomes crosses Base.")]
+        [Range(2f, 30f)]
+        public float bankRadius = 7f;
+
         [Tooltip("Half-width of the walkable world at Base, and at the far end. It widens as it " +
                  "goes out, so the deep biomes are places to get lost in rather than corridors.")]
         public float halfWidthNear = 46f;
@@ -146,6 +153,7 @@ namespace Graft.Game
                 PathPoints = points,
                 TileSize = tileSize,
                 BaseRadius = baseRadius,
+                BankRadius = bankRadius,
                 HalfWidthNear = halfWidthNear,
                 HalfWidthFar = halfWidthFar,
                 EdgeWaveAmplitude = edgeWaveAmplitude,

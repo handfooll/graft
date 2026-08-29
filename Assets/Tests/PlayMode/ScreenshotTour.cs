@@ -654,6 +654,288 @@ namespace Graft.Tests
             Capture("phase3_4_ember_scar_swarm");
         }
 
+        // ==========================================================================================
+        // Phase 4 - essence, cargo and the walk home.
+        //
+        // BUILD_PLAN.md: "four PNGs telling the story - cargo empty, cargo half, cargo full far from
+        // Base, and the bank moment at Base. **If those four images do not communicate the risk, the
+        // loop is not readable and needs redesign before Phase 5.**"
+        //
+        // Judge them against that sentence and not against whether the code is right. Every
+        // assertion below is only there to guarantee the picture is of what it claims to be.
+        // ==========================================================================================
+
+        /// <summary>
+        /// Image 1 of 4: leaving Base with nothing at risk.
+        ///
+        /// Posed on the safe ring *between* the two circles at Base - outside the bank plaza whose
+        /// lit dashes are behind the player, facing the way out. That is the composition the phase
+        /// is about: this is the last moment the walk home costs nothing.
+        ///
+        /// The cargo bar must read empty and the home cue must be absent. The cue's absence is the
+        /// half worth asserting: it is what makes its presence in the next three images mean
+        /// something rather than being scenery.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator Phase4_CargoEmpty()
+        {
+            yield return LoadWorld();
+            var player = FindPlayer();
+            Drive(player, Vec2.Zero);
+
+            var regions = Object.FindAnyObjectByType<WorldRegions>();
+            var ledger = Ledger();
+
+            // On the safe ring, a little way out from the monument, heading for the Verge.
+            var home = regions.AnchorFor(Area.Base);
+            var outward = (regions.AnchorFor(Area.Verge) - home);
+            outward.y = 0f;
+            var stand = home + outward.normalized * ((regions.BankRadius + regions.Map.BaseRadius) * 0.5f);
+
+            yield return Stage(player, stand, Quaternion.LookRotation(outward.normalized).eulerAngles.y);
+            yield return Seconds(0.4f);
+
+            Assert.AreEqual(0f, ledger.Carried.Carried, "The bar is not empty for the empty-bar picture.");
+            Assert.IsFalse(Cue().IsShowing,
+                "The home cue is up while the player is carrying nothing. It is the extraction " +
+                "decision made visible, and there is no decision here.");
+            Assert.IsTrue(regions.IsInBase(player.transform.position), "Not standing in Base.");
+            Assert.IsFalse(regions.IsInBankPlaza(player.transform.position),
+                "Standing on the plaza, which would have banked and is not what 'leaving' looks like.");
+
+            Capture("phase4_0_cargo_empty");
+        }
+
+        /// <summary>
+        /// Image 2 of 4: mid-expedition. Half a bar, essence in the air, the cue live.
+        ///
+        /// The motes are photographed **in flight** rather than at rest, and that is the whole
+        /// difficulty of this picture: a mote lying on the ground and a mote being drawn in look
+        /// identical in a still. Catching them mid-air, strung out between a corpse and the player,
+        /// is what makes the absorption legible as a thing that is happening.
+        ///
+        /// Timed off the kill rather than off a stopwatch, for the same reason
+        /// <see cref="Phase3_HitLanding"/> is: a fixed delay lands on whichever frame it lands on.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator Phase4_CargoHalf()
+        {
+            yield return LoadWorld();
+            var player = FindPlayer();
+            Drive(player, Vec2.Zero);
+
+            var regions = Object.FindAnyObjectByType<WorldRegions>();
+            var ledger = Ledger();
+            var field = Field();
+
+            yield return Stage(player, regions.AnchorFor(Area.RustFlats), 0f);
+
+            // Half a bar of Rust Flats essence, put in directly. A capture that had to *earn* half
+            // a bar would be seventy-five seconds of simulated fighting and a different picture
+            // every time the tuning moved.
+            var half = ledger.Carried.Capacity * 0.5f;
+            Assert.IsTrue(ledger.Absorb(new EssenceMote(EnemyFamily.Impact, half, Area.RustFlats)));
+
+            // Two live enemies for context. Bearings kept inside 20 degrees: the frame is 9.5 m
+            // across, so at eight metres out anything past that is in the fight and out of the
+            // picture.
+            Spawn(EnemyFamily.Impact, player, 14f, 7f);
+            Spawn(EnemyFamily.Venom, player, -20f, 8f);
+            yield return Frames(2);
+
+            // The kill is placed **beside** the player, not up-screen behind them, and that is the
+            // whole difficulty of this picture. Killed directly ahead, the motes come off a corpse
+            // that is behind the character, fly up the screen through the character's own health
+            // bar, and arrive as two or three pale specks nobody can see. Beside, they cross open
+            // ground and read as a stream.
+            //
+            // 2.4 m, so the whole 1.1 m scatter lands inside the 3.5 m magnet - a mote that falls
+            // outside it lies there rather than flying, which is correct play and a confusing shot.
+            // A depth-scaled Shellback rather than a plain one, because 128 effective health is six
+            // motes and three is not a shower.
+            //
+            // Placed to the player's left specifically because Base is to their right from Rust
+            // Flats, so the home cue is already drawing a gold arrow into the bottom-right of the
+            // frame. Essence and the way home are deliberately the same gold - the cue is the cargo
+            // asking to be banked - but two gold things overlapping in one corner is one gold
+            // smear. Opposite sides, and both read.
+            var victim = Spawner().Spawn(EnemyFamily.Hide, Ring(player, -100f, 2.4f), 1.35f);
+            Assert.IsNotNull(victim, "Nothing could be spawned close enough to leave essence in shot.");
+            victim.Health.ApplyDamage(victim.Health.Pool.Maximum + 1f);
+
+            Assert.GreaterOrEqual(field.LiveCount, 4,
+                $"The kill left only {field.LiveCount} motes. A shower is what makes the drop read.");
+
+            // 0.15 s: at 9 m/s that is 1.35 m of a 2.4 m trip, so the motes are strung out between
+            // the corpse and the player rather than still on it or already gone.
+            yield return Seconds(0.15f);
+
+            Assert.GreaterOrEqual(field.FlyingCount, 3,
+                $"Only {field.FlyingCount} motes are in the air when the shutter opens. Essence " +
+                "being drawn in and essence lying on the ground are the same object in a still " +
+                "picture - several of them mid-flight is the only thing that tells them apart.");
+            Assert.That(ledger.Carried.Fraction, Is.InRange(0.45f, 0.75f),
+                $"The bar is at {ledger.Carried.Fraction:P0} for the half-full picture.");
+            Assert.IsTrue(Cue().IsShowing, "No home cue, with half a bar and 78 m to walk.");
+
+            Capture("phase4_1_cargo_half");
+        }
+
+        /// <summary>
+        /// Image 3 of 4, and **the picture this phase exists for**: a full bar, in the deepest
+        /// biome, with the walk home in front of you and the swarm behind.
+        ///
+        /// Everything in it is one sentence of DESIGN.md §3 - "the cargo you are carrying is worth
+        /// more, so the walk home gets more dangerous exactly as it gets more valuable". The bar is
+        /// full and bordered, the readout says what it is worth, enemies are converging, the cue
+        /// points at a Base 29 seconds away, and the essence on the ground has gone cold because
+        /// there is no room for it. Nothing else is added to the frame.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator Phase4_CargoFullFarFromBase()
+        {
+            yield return LoadWorld();
+            var player = FindPlayer();
+            Drive(player, Vec2.Zero);
+
+            var regions = Object.FindAnyObjectByType<WorldRegions>();
+            var ledger = Ledger();
+            var field = Field();
+
+            yield return Stage(player, regions.AnchorFor(Area.EmberScar), 0f);
+
+            Assert.IsTrue(ledger.Absorb(
+                new EssenceMote(EnemyFamily.Hide, ledger.Carried.Capacity, Area.EmberScar)));
+            Assert.IsTrue(ledger.IsFull, "The bar is not full for the full-bar picture.");
+
+            // One frame for EssenceField to notice the hold filled, so the motes dropped below are
+            // made in the cold material rather than in the gold one.
+            yield return Frames(1);
+
+            // The swarm, at Ember Scar's own depth multiplier. Bearings kept shallow: the frame is
+            // portrait, and at eight metres a wide bearing puts an enemy outside the picture.
+            Spawner().Spawn(EnemyFamily.Hide, Ring(player, 18f, 8.5f), 2.4f);
+            Spawner().Spawn(EnemyFamily.Spark, Ring(player, -30f, 9f), 2.4f);
+            Spawner().Spawn(EnemyFamily.Venom, Ring(player, 155f, 7.5f), 2.4f);
+            Spawner().Spawn(EnemyFamily.Impact, Ring(player, -150f, 8f), 2.4f);
+
+            // And a corpse's worth of essence lying just off the player's feet, unclaimed. This is
+            // the half of "full" that lives in the world rather than in the HUD.
+            var victim = Spawner().Spawn(EnemyFamily.Impact, Ring(player, 60f, 2.4f), 2.4f);
+            Assert.IsNotNull(victim, "Nothing could be spawned to leave unclaimed essence.");
+            victim.Health.ApplyDamage(victim.Health.Pool.Maximum + 1f);
+
+            yield return Seconds(1.2f);
+
+            Assert.IsTrue(ledger.IsFull, "The bar came off full before the picture was taken.");
+            Assert.Greater(field.RestingCount, 0,
+                "There is no unclaimed essence on the ground. A full bar that looks like any other " +
+                "bar is the one thing this image cannot afford.");
+            Assert.AreEqual(field.LiveCount, field.RestingCount,
+                "Essence is still flying to a player who has no room for it.");
+            Assert.GreaterOrEqual(Registry().TargetableCount, 3,
+                "Fewer than three enemies on the field. The danger is half the picture.");
+            Assert.IsTrue(Cue().IsShowing, "No cue home, with a full bar 157 m out.");
+            Assert.Greater(ledger.CarriedValue, ledger.Carried.Capacity * 3f,
+                "A full Ember Scar bar is not worth appreciably more than a shallow one - the " +
+                "depth gradient is not visible in the number on screen.");
+
+            Capture("phase4_2_cargo_full_far");
+        }
+
+        /// <summary>
+        /// Image 4 of 4: the payoff. Walking into the lit ring at the monument with a full deep bar
+        /// and having it become permanent, with no button pressed (D8).
+        ///
+        /// The player is **walked** in rather than teleported, so the picture is of an arrival. The
+        /// capture is taken on the far side of the crossing, which is the only frame where the two
+        /// halves of the payoff are on screen at once: the bar has emptied and the banked total has
+        /// jumped by what it was worth.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator Phase4_BankingAtBase()
+        {
+            yield return LoadWorld();
+            var player = FindPlayer();
+            var input = Drive(player, Vec2.Zero);
+
+            var regions = Object.FindAnyObjectByType<WorldRegions>();
+            var ledger = Ledger();
+            var bank = Object.FindAnyObjectByType<BankZone>();
+            Assert.IsNotNull(bank, "No BankZone in the World scene - nothing can be banked.");
+
+            // Coming home from Ember Scar with a full hold, which is what makes the total jump by
+            // an amount worth photographing.
+            Assert.IsTrue(ledger.Absorb(
+                new EssenceMote(EnemyFamily.Hide, ledger.Carried.Capacity, Area.EmberScar)));
+            var haul = ledger.CarriedValue;
+
+            var home = regions.AnchorFor(Area.Base);
+            var approach = home - new Vector3(0f, 0f, regions.BankRadius + 3.2f);
+            yield return Stage(player, approach, 0f);
+            bank.Resync();
+
+            Assert.IsFalse(regions.IsInBankPlaza(player.transform.position),
+                "The approach already starts on the plaza - there is no crossing to photograph.");
+            Assert.AreEqual(0f, ledger.BankedTotal);
+
+            // Walk in. Driven rather than teleported so the character is mid-stride and the camera
+            // has settled behind a moving target, which is what arriving looks like.
+            input.Value = new Vec2(0f, 1f);
+
+            var guard = 0f;
+            while (bank.Bankings == 0 && guard < 6f)
+            {
+                guard += Time.deltaTime;
+                yield return null;
+            }
+
+            Assert.AreEqual(1, bank.Bankings,
+                "Walking to the monument with a full hold did not bank it.");
+
+            // Two frames: one for the ledger's event, one for the HUD's LateUpdate to redraw the
+            // total it raised. Capturing on the crossing frame itself photographs the old number.
+            yield return Frames(2);
+            input.Value = Vec2.Zero;
+            yield return Frames(1);
+
+            Assert.AreEqual(haul, ledger.BankedTotal, 1e-3f, "The banked total is not the haul.");
+            Assert.AreEqual(0f, ledger.Carried.Carried, "The bar did not empty on banking.");
+            Assert.IsTrue(regions.IsInBankPlaza(player.transform.position), "Not on the plaza.");
+
+            Capture("phase4_3_banking_at_base");
+        }
+
+        // -- Phase 4 helpers --------------------------------------------------------------------
+
+        static ExtractionLedger Ledger()
+        {
+            var cargo = Object.FindAnyObjectByType<PlayerCargo>();
+            Assert.IsNotNull(cargo, "No PlayerCargo on the player - there is no cargo to photograph.");
+            var ledger = cargo.Ledger;
+            Assert.IsNotNull(ledger,
+                "PlayerCargo has no ledger: its EssenceTuning or its WorldRegions is missing.");
+            return ledger;
+        }
+
+        static EssenceField Field()
+        {
+            var field = Object.FindAnyObjectByType<EssenceField>();
+            Assert.IsNotNull(field, "No EssenceField in the World scene - nothing can ever drop.");
+            return field;
+        }
+
+        static HomeCue Cue()
+        {
+            var cue = Object.FindAnyObjectByType<HomeCue>();
+            Assert.IsNotNull(cue, "No HomeCue on the player - there is no way home to photograph.");
+            return cue;
+        }
+
+        /// <summary>A point on a bearing and distance from the player, on the ground plane.</summary>
+        static Vector3 Ring(PlayerController player, float bearing, float distance) =>
+            player.transform.position + Quaternion.Euler(0f, bearing, 0f) * Vector3.forward * distance;
+
         // -- Phase 3 helpers --------------------------------------------------------------------
 
         static EnemySpawner Spawner()
@@ -680,6 +962,15 @@ namespace Graft.Tests
             var effects = Object.FindAnyObjectByType<CombatEffects>();
             Assert.IsNotNull(effects, "No CombatEffects in the World scene - nothing could fire.");
             effects.ClearShots();
+
+            // Essence too, from Phase 4 on. The tour poses every capture in one scene without
+            // reloading between them, so a mote left lying where the previous pose dropped it would
+            // wander into the next picture - the same reason the field and the shots are swept.
+            var field = Object.FindAnyObjectByType<EssenceField>();
+            if (field != null)
+            {
+                field.Clear();
+            }
 
             player.Teleport(at, heading);
             // Two frames rather than one: the camera is damped, and the first frame after a
