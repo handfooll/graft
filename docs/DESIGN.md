@@ -90,6 +90,12 @@ expedition - that is a real build decision, not just accumulation.
 
 **Grafts are cleared on banking.** They are expedition-scoped, like v1's run-scoped grafts.
 
+**Grafts do not spend essence.** The per-family meter is a gauge, not a wallet: filling it *offers*
+a graft, and accepting one costs corruption and leaves cargo untouched. Corruption is the whole
+price of mutating. *(Agreed 2026-08-30 - `docs/specs/phase4-essence-cargo-extraction.md` D-P4.1,
+which carries the reasoning. Charging cargo for grafts would teach the player to refuse the thing
+this game is selling.)*
+
 ## 6. Corruption
 
 - Every graft raises corruption.
@@ -116,6 +122,15 @@ types**. Biome identity must be readable in a single screenshot.
 
 **Distance from Base is the difficulty dial.** This is what makes a continuous world *mean*
 something rather than being five arenas in a trenchcoat.
+
+**Base is two rings, and only the inner one banks.** The outer disc is the safe hub: no enemies, the
+player heals, and reaching it costs nothing - you can retreat into it mid-expedition and keep your
+cargo, your grafts and your corruption. The **bank plaza** at its centre is where §3's "walk back to
+Base to bank it" actually resolves: crossing into it banks everything, resets corruption and clears
+grafts, automatically and with no button press. *(Agreed 2026-08-30 -
+`docs/specs/phase4-essence-cargo-extraction.md` D-P4.2. A single ring would bank the player by
+accident every time a route between two biomes crossed Base; a button press would spend a thumb the
+player does not have and turn the payoff into paperwork.)*
 
 ## 8. Deferred - explicitly NOT in the first build
 
